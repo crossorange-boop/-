@@ -229,6 +229,12 @@
               <i data-lucide="shopping-cart" class="w-5 h-5 text-blue-400"></i>
               <span>提案商品 総合明細</span>
             </h2>
+            <!-- Step 4 の UI にプラン切り替えボタンとサマリーを追加 -->
+　　　　　　　<div class="px-5 pb-4 flex gap-4">
+  　　　　　　　<button onclick="filterProposalByPriority('ベーシック')" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded text-sm font-bold">ベーシック (必須のみ) <br><span id="price-basic" class="text-blue-600">¥0</span></button>
+  　　　　　　　<button onclick="filterProposalByPriority('スタンダード')" class="px-4 py-2 bg-blue-100 hover:bg-blue-200 rounded text-sm font-bold border-2 border-blue-400">スタンダード (必須+推奨) <br><span id="price-standard" class="text-blue-600">¥0</span></button>
+  　　　　　　　<button onclick="filterProposalByPriority('プレミアム')" class="px-4 py-2 bg-amber-100 hover:bg-amber-200 rounded text-sm font-bold">プレミアム (全て) <br><span id="price-premium" class="text-blue-600">¥0</span></button>
+　　　　　　　</div>
             <p class="text-xs text-slate-400">提案数量や備考は直接書き込んで手動調整可能です。</p>
           </div>
           <div class="flex items-center space-x-3">
@@ -1477,7 +1483,44 @@ function renderBStockCalcTable_(people, days) {
         });
       });
       currentCalculatedProposal.forEach(i=>{const o=proposalOverrides[makeProposalOverrideKey_(i)];if(o?.qty!==undefined){i.qty=Math.max(0,parseInt(o.qty)||0);i.auto=false;}if(o?.note!==undefined)i.note=o.note;i.totalPrice=i.qty*i.price;});
-      renderProposalSummaryTable();
+      // JSにフィルタリング関数を追加
+let currentPriorityFilter = 'スタンダード';
+
+function filterProposalByPriority(planName) {
+  currentPriorityFilter = planName;
+  // UIのボタンスタイル切り替え処理をここに記述
+  renderProposalSummaryTable();
+}
+
+function renderProposalSummaryTable() {
+  const tbody = document.getElementById('proposal-summary-rows');
+  tbody.innerHTML = ''; 
+  let total = 0, basicTotal = 0, stdTotal = 0, premTotal = 0;
+
+  currentCalculatedProposal.forEach((item, idx) => {
+    const prio = item.product?.priority || '必須';
+    const rowPrice = item.qty * item.price;
+    
+    // 金額シミュレーション用合算
+    if (prio === '必須') { basicTotal += rowPrice; stdTotal += rowPrice; premTotal += rowPrice; }
+    else if (prio === '推奨') { stdTotal += rowPrice; premTotal += rowPrice; }
+    else { premTotal += rowPrice; }
+
+    // 選択中のプランに応じたフィルタリング
+    if (currentPriorityFilter === 'ベーシック' && prio !== '必須') return;
+    if (currentPriorityFilter === 'スタンダード' && prio === '任意') return;
+
+    total += rowPrice;
+    
+    // 既存の tr 生成ロジック...
+  });
+
+  // 金額の反映
+  document.getElementById('summary-total-price').innerText = `¥${total.toLocaleString()}`;
+  document.getElementById('price-basic').innerText = `¥${basicTotal.toLocaleString()}`;
+  document.getElementById('price-standard').innerText = `¥${stdTotal.toLocaleString()}`;
+  document.getElementById('price-premium').innerText = `¥${premTotal.toLocaleString()}`;
+}
     }
 
     function makeProductStableKey_(p){ return String(p?.model||'')+'|||'+String(p?.name||''); }

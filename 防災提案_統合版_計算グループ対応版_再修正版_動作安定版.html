@@ -1360,41 +1360,73 @@
       });
       return (includeSufficient ? out : out.filter(x=>x.shortage>0||proposalOverrides[makeProposalOverrideKey_(x)]?.qty>0)).sort((a,b)=>(rank[a.product.priority]??9)-(rank[b.product.priority]??9)||b.shortage-a.shortage);
     }
-    function renderBStockCalcTable_(people,days){
-      const tbody=document.getElementById('b-stock-calc-rows'); if(!tbody)return;
-      tbody.innerHTML='';
-      const all=buildMasterCandidates_(people,days,true);
-      const order=new Map(products.map((p,i)=>[makeProductStableKey_(p),i]));
-      all.sort((a,b)=>(order.get(makeProductStableKey_(a.product))??999999)-(order.get(makeProductStableKey_(b.product))??999999));
-      if(!all.length){tbody.innerHTML='<tr><td colspan="7" class="py-6 text-center text-slate-400">現在の条件で対象となる有効商品はありません。</td></tr>';return;}
-      const groupAllocated={};
-      all.forEach(item=>{
-        const key=makeProposalOverrideKey_(item),o=proposalOverrides[key]||{};
-        const q=o.qty!==undefined?n_(o.qty):n_(item.qty);
-        if(item.group)groupAllocated[item.group]=(groupAllocated[item.group]||0)+Math.max(0,q);
-      });
-      all.forEach(item=>{
-        const key=makeProposalOverrideKey_(item),o=proposalOverrides[key]||{};
-        const stock=o.stock!==undefined?n_(o.stock):0;
-        const hasManual=o.qty!==undefined;
-        const proposal=hasManual?n_(o.qty):n_(item.qty);
-        const allocation=Math.max(0,proposal);
-        const groupAlloc=item.group?n_(groupAllocated[item.group]):allocation;
-        const shortage=item.group?Math.max(0,n_(item.requiredQty)-stock-groupAlloc):Math.max(0,n_(item.requiredQty)-stock-allocation);
-        const target=n_(item.requiredQty),unit=escapeHtml_(item.product.unit||item.groupUnit||'');
-        const groupTotal=item.groupRequiredQty!==undefined&&item.groupRequiredQty!==target?`<div class="text-[10px] font-normal text-slate-400">グループ全体 ${n_(item.groupRequiredQty).toLocaleString()} ${escapeHtml_(item.groupUnit||'')}</div>`:'';
-        const tr=document.createElement('tr');
-        tr.innerHTML=`<td class="py-2.5 px-3 font-semibold">${escapeHtml_(item.group||item.type)}</td>
-          <td class="py-2.5 px-3 text-right font-bold">${target.toLocaleString()} ${unit}${groupTotal}</td>
-          <td class="py-2.5 px-3">[${escapeHtml_(item.model||'-')}] ${escapeHtml_(item.name)} <span class="text-xs text-slate-500">${item.isReducedTax?'8%':'10%'}</span></td>
-          <td class="py-2.5 px-3 text-right"><input type="number" min="0" value="${stock}" onchange="updateBStockByKey_('${escapeJs_(key)}',this.value)" class="w-24 text-right cell-manual rounded p-1" title="お客様の現有数"></td>
-          <td class="py-2.5 px-3 text-right font-bold"><input type="number" min="0" value="${proposal}" onchange="updateBProposalQtyByKey_('${escapeJs_(key)}',this.value)" class="w-24 text-right cell-manual rounded p-1 font-bold ${hasManual?'ring-2 ring-blue-300 bg-blue-50':''}" title="営業マンが確定・調整する提案数"></td>
-          <td class="py-2.5 px-3 text-right font-bold text-blue-700">${allocation.toLocaleString()} ${unit}</td>
-          <td class="py-2.5 px-3 text-right font-bold ${shortage>0?'text-rose-700':'text-emerald-700'}">${shortage.toLocaleString()} ${unit}</td>`;
-        tbody.appendChild(tr);
-      });
-    }
+function renderBStockCalcTable_(people, days) {
+  const tbody = document.getElementById('b-stock-calc-rows');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  const all = buildMasterCandidates_(people, days, true);
+  
+  if (!all.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="py-6 text-center text-slate-400">現在の条件で対象となる有効商品はありません。</td></tr>';
+    return;
+  }
 
+  // グループごとに商品をまとめる
+  const grouped = {};
+  all.forEach(item => {
+    const gName = item.group || '個別計算（グループなし）';
+    if (!grouped[gName]) grouped[gName] = [];
+    grouped[gName].push(item);
+  });
+
+  Object.entries(grouped).forEach(([gName, items]) => {
+    // グループ全体の集計
+    let groupReq = 0, groupStock = 0, groupAlloc = 0;
+    items.forEach(item => {
+      const key = makeProposalOverrideKey_(item);
+      const o = proposalOverrides[key] || {};
+      const stock = o.stock !== undefined ? n_(o.stock) : 0;
+      const alloc = o.qty !== undefined ? n_(o.qty) : n_(item.qty);
+      groupReq = item.groupRequiredQty || item.requiredQty; // グループ全体目標
+      groupStock += stock;
+      groupAlloc += alloc;
+    });
+    const groupShortage = Math.max(0, groupReq - groupStock);
+
+    // グループ集計行の挿入
+    const groupTr = document.createElement('tr');
+    groupTr.className = 'bg-slate-200/50 font-bold';
+    groupTr.innerHTML = `
+      <td class="py-2.5 px-3 text-slate-700" colspan="3">【${escapeHtml_(gName)}】全体目標</td>
+      <td class="py-2.5 px-3 text-right text-slate-700">現有計: ${groupStock.toLocaleString()}</td>
+      <td class="py-2.5 px-3 text-right text-blue-700">割当計: ${groupAlloc.toLocaleString()}</td>
+      <td class="py-2.5 px-3 text-right ${groupShortage > 0 ? 'text-rose-700' : 'text-emerald-700'}" colspan="2">不足計: ${groupShortage.toLocaleString()}</td>
+    `;
+    tbody.appendChild(groupTr);
+
+    // グループ内各商品の行
+    items.forEach(item => {
+      const key = makeProposalOverrideKey_(item);
+      const o = proposalOverrides[key] || {};
+      const stock = o.stock !== undefined ? n_(o.stock) : 0;
+      const hasManual = o.qty !== undefined;
+      const proposal = hasManual ? n_(o.qty) : n_(item.qty);
+      const unit = escapeHtml_(item.product.unit || item.groupUnit || '');
+      
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="py-2.5 px-3 pl-6 text-slate-500">└</td>
+        <td class="py-2.5 px-3 text-right">${n_(item.requiredQty).toLocaleString()} ${unit}</td>
+        <td class="py-2.5 px-3">[${escapeHtml_(item.model || '-')}] ${escapeHtml_(item.name)}</td>
+        <td class="py-2.5 px-3 text-right"><input type="number" min="0" value="${stock}" onchange="updateBStockByKey_('${escapeJs_(key)}',this.value)" class="w-24 text-right cell-manual rounded p-1"></td>
+        <td class="py-2.5 px-3 text-right font-bold"><input type="number" min="0" value="${proposal}" onchange="updateBProposalQtyByKey_('${escapeJs_(key)}',this.value)" class="w-24 text-right cell-manual rounded p-1 ${hasManual ? 'ring-2 ring-blue-300 bg-blue-50' : ''}"></td>
+        <td class="py-2.5 px-3 text-right font-bold text-blue-700">${proposal.toLocaleString()} ${unit}</td>
+        <td class="py-2.5 px-3 text-right text-slate-400">-</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  });
+}
     function updateBStockByKey_(key,val){
       const people=Math.max(1,parseInt(document.getElementById('input-people').value)||1);
       const days=Math.max(1,parseInt(document.getElementById('input-days').value)||1);

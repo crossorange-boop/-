@@ -1285,29 +1285,34 @@
     }
     function roundMinimum_(qty,min){const q=Math.max(0,n_(qty));const m=Math.max(1,n_(min,1));return q>0?Math.ceil(q/m)*m:0;}
     function getCalcGroup_(name){return calcGroups.find(g=>String(g.name||'').trim()===String(name||'').trim())||null;}
-    function groupRequiredQty_(g,people,days){
+    function group(g,people,days){
       if(!g)return 0;
       if(g.calcType==='人数×日数')return people*days*n_(g.dailyNeed);
       if(g.calcType==='人数÷対応人数')return n_(g.capPeople)>0?Math.ceil(people/n_(g.capPeople)):0;
       if(g.calcType==='固定数')return n_(g.minNeed,1);
       return n_(g.minNeed,0);
     }
-    function requiredQty_(p,people,days){
-      const ct=p.calcType||'', daily=n_(p.dailyNeed), cap=n_(p.capPeople), c=parseCapacity_(p.capacity);
-      if(ct==='内容量無視') return Math.max(0,n_(p.minNeed,1));
-      if(ct==='人数×日数'){
-        const base=people*days*daily;
-        const cv=capacityValue_(p.capacity, (p.unit==='L' || (p.catLarge||'').includes('水'))?'L':p.unit); return cv>0 ? base/cv : base;
-      }
-      if(ct==='人数'){
-        const base=people*(daily||1);
-        const cv=capacityValue_(p.capacity, (p.unit==='L' || (p.catLarge||'').includes('水'))?'L':p.unit); return cv>0 ? base/cv : base;
-      }
-      if(ct==='人数÷対応人数') return cap>0?Math.ceil(people/cap):0;
-      if(ct==='人数×割合') return Math.ceil(people*(daily||1)/100);
-      if(ct==='固定数') return n_(p.minNeed,1);
-      return daily>0?people*days*daily:(cap>0?Math.ceil(people/cap):0);
-    }
+// requiredQty_ 関数の修正
+function requiredQty_(p, people, days) {
+  const ct = p.calcType || '', daily = n_(p.dailyNeed), cap = n_(p.capPeople);
+  // 商品マスタの内容量をパース
+  const cv = capacityValue_(p.capacity, (p.unit === 'L' || (p.catLarge || '').includes('水')) ? 'L' : p.unit) || 1; 
+
+  if (ct === '内容量無視') return Math.max(0, n_(p.minNeed, 1));
+  if (ct === '人数×日数') {
+    const base = people * days * daily;
+    return base / cv; // 常に内容量で割る
+  }
+  if (ct === '人数') {
+    const base = people * (daily || 1);
+    return base / cv; // 常に内容量で割る
+  }
+  // その他は既存のまま
+  if (ct === '人数÷対応人数') return cap > 0 ? Math.ceil(people / cap) : 0;
+  if (ct === '人数×割合') return Math.ceil(people * (daily || 1) / 100);
+  if (ct === '固定数') return n_(p.minNeed, 1);
+  return daily > 0 ? (people * days * daily) / cv : (cap > 0 ? Math.ceil(people / cap) : 0);
+}
     function buildMasterCandidates_(people,days,includeSufficient=false){
       const active=products.filter(p=>(p.status||'有効')==='有効'&&facilityFlag_(p));
       const groups={};

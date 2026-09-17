@@ -1,0 +1,2146 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ResiliencePro Matrix - 防災提案＆サブスク統合シミュレーター</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'Noto Sans JP', 'sans-serif'],
+          },
+          colors: {
+            excelInput: '#e0f2fe',
+            excelCalc: '#f0fdf4',
+            excelManual: '#fef3c7',
+            excelError: '#ffe4e6'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .cell-input { background-color: #f0f9ff; border: 1px solid #bae6fd; }
+    .cell-calc { background-color: #f0fdf4; border: 1px solid #bbf7d0; }
+    .cell-manual { background-color: #fffbeb; border: 1px solid #fef3c7; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    @media print {
+      body * { visibility: hidden; }
+      #printable-quote, #printable-quote * { visibility: visible; }
+      #printable-quote { position: absolute; left: 0; top: 0; width: 100%; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+
+  <!-- Header / Navigation -->
+  <header class="bg-slate-900 text-white sticky top-0 z-40 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center space-x-3">
+          <div class="bg-blue-600 p-2 rounded-lg text-white">
+            <i data-lucide="shield-alert" class="w-6 h-6"></i>
+          </div>
+          <div>
+            <span class="font-bold text-lg tracking-wide bg-gradient-to-r from-blue-400 to-teal-300 bg-clip-text text-transparent">ResiliencePro Matrix</span>
+            <span class="text-xs text-slate-400 block -mt-1">防災提案 & サブスク統合シミュレーター</span>
+          </div>
+        </div>
+
+        <nav class="flex space-x-1 sm:space-x-2">
+          <button onclick="switchTab('proposal')" id="tab-btn-proposal" class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center space-x-2 bg-blue-600 text-white">
+            <i data-lucide="file-text" class="w-4 h-4"></i>
+            <span>防災提案作成</span>
+          </button>
+          <button onclick="switchTab('subscription')" id="tab-btn-subscription" class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center space-x-2 text-slate-300 hover:bg-slate-800">
+            <i data-lucide="calculator" class="w-4 h-4"></i>
+            <span>サブスクシミュレーター</span>
+          </button>
+          <button onclick="switchTab('master')" id="tab-btn-master" class="tab-btn px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center space-x-2 text-slate-300 hover:bg-slate-800">
+            <i data-lucide="database" class="w-4 h-4"></i>
+            <span>マスタ設定</span>
+          </button>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- TAB 1: 防災提案作成 (PROPOSAL) -->
+    <div id="tab-proposal" class="tab-content space-y-6">
+      <!-- 案件管理 -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0">
+              <i data-lucide="folder-open" class="w-5 h-5"></i>
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-semibold text-slate-500">現在の案件</span>
+                <span id="current-case-name" class="font-bold text-slate-800 truncate">未保存の案件</span>
+              </div>
+              <div id="autosave-status" class="text-[11px] text-slate-400 mt-0.5">自動保存: 待機中</div>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="newCase()" class="px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+              <i data-lucide="file-plus-2" class="w-4 h-4"></i><span>新規案件</span>
+            </button>
+            <button onclick="saveCase()" class="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold flex items-center gap-1.5">
+              <i data-lucide="save" class="w-4 h-4"></i><span>案件を保存</span>
+            </button>
+            <button onclick="openCaseManager()" class="px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1.5">
+              <i data-lucide="folder-open" class="w-4 h-4"></i><span>案件を呼び出す</span>
+            </button>
+            <button onclick="exportCurrentCaseJSON()" class="px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+              <i data-lucide="upload" class="w-4 h-4"></i><span>案件を書き出す</span>
+            </button>
+            <button onclick="document.getElementById('case-import-file').click()" class="px-3 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+              <i data-lucide="download" class="w-4 h-4"></i><span>案件を読み込む</span>
+            </button>
+            <input type="file" id="case-import-file" accept="application/json,.json" class="hidden" onchange="importCaseJSON(event)">
+          </div>
+        </div>
+      </div>
+
+      <!-- 見積宛先 -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-slate-800 text-white px-5 py-3 flex items-center justify-between">
+          <h2 class="font-bold flex items-center gap-2"><i data-lucide="building-2" class="w-4 h-4 text-blue-300"></i><span>見積書の宛先情報</span></h2>
+          <span class="text-[11px] text-slate-400">案件ごとに保存されます</span>
+        </div>
+        <div class="p-5 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div><label class="block font-semibold text-slate-600 mb-1">宛名（会社名・施設名） *</label><input id="quote-recipient-name" type="text" class="w-full cell-input rounded p-2" placeholder="例：○○株式会社"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">部署名</label><input id="quote-recipient-dept" type="text" class="w-full cell-input rounded p-2" placeholder="例：総務部"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">担当者名</label><input id="quote-recipient-person" type="text" class="w-full cell-input rounded p-2" placeholder="例：山田 太郎 様"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">郵便番号</label><input id="quote-recipient-postal" type="text" class="w-full cell-input rounded p-2" placeholder="〒000-0000"></div>
+          <div class="md:col-span-2"><label class="block font-semibold text-slate-600 mb-1">住所</label><input id="quote-recipient-address" type="text" class="w-full cell-input rounded p-2" placeholder="都道府県・市区町村・番地"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">TEL</label><input id="quote-recipient-tel" type="text" class="w-full cell-input rounded p-2"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">メール</label><input id="quote-recipient-email" type="email" class="w-full cell-input rounded p-2"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">見積件名</label><input id="quote-subject" type="text" class="w-full cell-input rounded p-2" value="防災備蓄品及び避難設備導入提案の件"></div>
+        </div>
+      </div>
+
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center space-x-4 text-xs font-semibold">
+          <span class="text-slate-500">凡例:</span>
+          <span class="px-2.5 py-1 rounded cell-input text-blue-800">手入力</span>
+          <span class="px-2.5 py-1 rounded cell-calc text-emerald-800">自動計算</span>
+          <span class="px-2.5 py-1 rounded cell-manual text-amber-800">手動書き込み・変更可</span>
+        </div>
+        <div class="text-xs text-slate-500">※軽減税率対象商品は（軽減 8%）と明記されます</div>
+      </div>
+
+      <!-- Step 1: パラメータ設定 -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-slate-800 text-white px-5 py-3 flex items-center justify-between">
+          <h2 class="font-bold flex items-center space-x-2">
+            <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-bold">1</span>
+            <span>対象パラメータ設定（基本条件）</span>
+          </h2>
+        </div>
+        <div class="p-5 grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">対象施設/事業体区分</label>
+            <select id="input-facility-type" onchange="calculateAll()" class="w-full cell-input text-sm rounded-md px-3 py-2 font-medium">
+              <option value="business">一般企業・事業所 (事業者B+A)</option>
+              <option value="household">一般家庭・個人宅 (個人A+B)</option>
+              <option value="hotel">ホテル・旅館・施設 (施設C+B+A)</option>
+              <option value="public">自治体・避難所 (施設C+B)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">対象人数 (名)</label>
+            <input type="number" id="input-people" value="50" min="1" onchange="calculateAll()" onkeyup="calculateAll()" class="w-full cell-input text-sm rounded-md px-3 py-2 font-bold text-blue-900">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">備蓄想定日数 (日)</label>
+            <input type="number" id="input-days" value="3" min="1" max="30" onchange="calculateAll()" onkeyup="calculateAll()" class="w-full cell-input text-sm rounded-md px-3 py-2 font-bold text-blue-900">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">必要総食糧数 (自動計算)</label>
+            <div id="display-total-meals" class="w-full cell-calc text-sm rounded-md px-3 py-2 font-bold text-emerald-800 flex items-center justify-between">
+              <span>450 食</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: B 防災備蓄 -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-slate-800 text-white px-5 py-3 flex items-center justify-between">
+          <h2 class="font-bold flex items-center space-x-2">
+            <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-bold">2</span>
+            <span>【B】防災備蓄品 (要件按分計算)</span>
+          </h2>
+          <button onclick="resetManualInputs_()" class="bg-slate-600 hover:bg-slate-500 text-white px-3 py-1.5 rounded text-xs font-semibold">②以下の手入力をリセット</button>
+        </div>
+        <div class="p-5 overflow-x-auto">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-slate-100 text-slate-600 text-xs uppercase border-b border-slate-200">
+              <tr>
+                <th class="py-2.5 px-3">備蓄カテゴリ</th>
+                <th class="py-2.5 px-3 text-right">目標数量</th>
+                <th class="py-2.5 px-3">選定商品 & 税率</th>
+                <th class="py-2.5 px-3 text-right">現有数</th>
+                <th class="py-2.5 px-3 text-right">提案数</th>
+                <th class="py-2.5 px-3 text-right">割当数</th>
+                <th class="py-2.5 px-3 text-right">不足数</th>
+              </tr>
+            </thead>
+            <tbody id="b-stock-calc-rows" class="divide-y divide-slate-200"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Step 3: オプションセット（旧 A・C標準セット） -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-slate-800 text-white px-5 py-3 flex items-center justify-between">
+          <h2 class="font-bold flex items-center space-x-2">
+            <span class="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-bold">3</span>
+            <span>【A・C】オプションセット選択（持ち出しパック＆避難所設備）</span>
+          </h2>
+        </div>
+        <div class="p-5">
+          <div id="standard-sets-selector-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </div>
+      </div>
+
+      <!-- Step 4: 提案商品 総合明細（手動提案数・備考入力機能付き） -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-slate-900 text-white px-5 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 class="font-bold text-lg flex items-center space-x-2">
+              <i data-lucide="shopping-cart" class="w-5 h-5 text-blue-400"></i>
+              <span>提案商品 総合明細</span>
+            </h2>
+            <p class="text-xs text-slate-400">提案数量や備考は直接書き込んで手動調整可能です。</p>
+          </div>
+          <div class="flex items-center space-x-3">
+            <button onclick="openQuoteModal('purchase')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition flex items-center space-x-2">
+              <i data-lucide="printer" class="w-4 h-4"></i>
+              <span>通常見積書 (買い切り) 発行</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="p-5 space-y-4">
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+              <thead class="bg-slate-100 text-slate-600 text-xs uppercase border-b border-slate-200">
+                <tr>
+                  <th class="py-3 px-3">区分</th>
+                  <th class="py-3 px-3">型番 / 商品名</th>
+                  <th class="py-3 px-3 text-center">税別/税率</th>
+                  <th class="py-3 px-3 text-right">単価 (上代)</th>
+                  <th class="py-3 px-3 text-right w-28">提案数量 (手動可)</th>
+                  <th class="py-3 px-3 text-right">小計 (税抜)</th>
+                  <th class="py-3 px-3 w-48">備考 (見積書に反映)</th>
+                </tr>
+              </thead>
+              <tbody id="proposal-summary-rows" class="divide-y divide-slate-200"></tbody>
+              <tfoot class="bg-slate-50 font-bold border-t-2 border-slate-300">
+                <tr>
+                  <td colspan="5" class="py-3 px-3 text-right text-slate-700">合計金額 (税抜):</td>
+                  <td id="summary-total-price" class="py-3 px-3 text-right text-blue-700 text-base">¥0</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: サブスクシミュレーター -->
+    <div id="tab-subscription" class="tab-content hidden space-y-6">
+      <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-xl text-blue-900 flex items-start justify-between gap-4">
+        <div><h4 class="font-bold text-sm">サブスクサービス設計シミュレーター</h4><p class="text-xs text-blue-700 mt-1">防災提案とは独立して、オプションセットを「何セット・何円/月」で提供するかを検討します。耐久消費財は買い切り、期限・消耗品は定期補充するサービス設計を想定しています。</p></div>
+        <button onclick="openQuoteModal('subscription')" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-semibold whitespace-nowrap">サブスク見積書</button>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-1 space-y-6">
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5"><h3 class="font-bold text-slate-800 text-sm mb-3">① サブスク対象オプションセット</h3><div id="sub-item-selection-list" class="space-y-2 max-h-80 overflow-y-auto"></div><div class="mt-3 pt-3 border-t text-xs text-slate-500">選択セットの初期構成原価：<b id="sub-selected-total-price" class="text-slate-800">¥0</b></div></div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-3"><h3 class="font-bold text-slate-800 text-sm">② サービス条件</h3>
+            <div><label class="block text-xs font-semibold text-slate-600 mb-1">月額利用料（税抜）</label><input type="number" id="sub-monthly-fee-input" value="10000" min="0" step="100" oninput="runSubscriptionSimulation()" class="w-full cell-input rounded p-2 font-bold text-blue-900"></div>
+            <div><label class="block text-xs font-semibold text-slate-600 mb-1">初回導入費（税抜）</label><input type="number" id="sub-init-fee" value="30000" min="0" step="1000" oninput="runSubscriptionSimulation()" class="w-full cell-input rounded p-2"></div>
+            <div><label class="block text-xs font-semibold text-slate-600 mb-1">分析期間</label><select id="sub-analysis-months" onchange="runSubscriptionSimulation()" class="w-full cell-input rounded p-2"><option value="60">60ヶ月</option><option value="120" selected>120ヶ月</option><option value="180">180ヶ月</option></select></div>
+            <div><label class="block text-xs font-semibold text-slate-600 mb-1">商品総入替周期</label><input type="number" id="sub-replace-cycle" value="60" min="1" oninput="runSubscriptionSimulation()" class="w-full cell-input rounded p-2"></div>
+          </div>
+        </div>
+        <div class="lg:col-span-2 space-y-6">
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div class="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-5 rounded-xl shadow-md"><span class="text-xs text-blue-200 block">月額売上</span><span id="metric-monthly-fee" class="text-2xl font-extrabold mt-1 block">¥0</span></div>
+            <div class="bg-white p-5 rounded-xl border shadow-sm"><span class="text-xs text-slate-500 block">分析期間売上</span><span id="metric-total-sub-pay" class="text-xl font-bold mt-1 block">¥0</span></div>
+            <div class="bg-white p-5 rounded-xl border shadow-sm"><span class="text-xs text-slate-500 block">総原価</span><span id="metric-total-cost" class="text-xl font-bold text-rose-700 mt-1 block">¥0</span></div>
+            <div class="bg-white p-5 rounded-xl border shadow-sm"><span class="text-xs text-slate-500 block">利益率</span><span id="metric-profit-margin" class="text-xl font-bold text-emerald-600 mt-1 block">0.0%</span></div>
+          </div>
+          <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-5"><h3 class="font-bold text-slate-800 text-sm mb-3">③ 入替・損益シミュレーション</h3><div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs"><div class="bg-slate-50 p-3 rounded"><span class="text-slate-500 block">1回あたり入替原価</span><b id="metric-replacement-cost">¥0</b></div><div class="bg-slate-50 p-3 rounded"><span class="text-slate-500 block">入替回数</span><b id="metric-replacement-count">0回</b></div><div class="bg-slate-50 p-3 rounded"><span class="text-slate-500 block">損益分岐</span><b id="metric-break-even">—</b></div></div><div class="mt-4 h-56 relative"><canvas id="subComparisonChart"></canvas></div></div>
+          <div class="bg-amber-50/70 rounded-xl border border-amber-200 p-5 space-y-4"><h3 class="font-bold text-amber-900 text-sm">④ 解約・違約金の影響</h3><div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs"><div><label class="block font-medium mb-1">13〜24ヶ月 違約金</label><input type="number" id="penalty-tier1" value="50000" min="0" oninput="runSubscriptionSimulation()" class="w-full cell-input rounded p-2 font-bold"></div><div><label class="block font-medium mb-1">25ヶ月以降 違約金</label><input type="number" id="penalty-tier2" value="20000" min="0" oninput="runSubscriptionSimulation()" class="w-full cell-input rounded p-2 font-bold"></div><div><label class="block font-medium mb-1">テスト解約月</label><input type="number" id="test-cancel-month" value="36" min="1" oninput="runSubscriptionSimulation()" class="w-full cell-input rounded p-2 font-bold"></div></div><div class="bg-white p-3 rounded border flex justify-between text-xs"><span>テスト解約時の違約金</span><b id="display-penalty-amount" class="text-rose-600">¥0</b></div><div class="text-xs text-slate-600">※違約金は通常売上と分けて表示し、解約時の損益への影響を確認します。</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: マスタ設定 (MASTER) -->
+    <div id="tab-master" class="tab-content hidden space-y-8">
+      
+      <!-- 1. 自社情報・見積設定 -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden p-5 space-y-5">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h2 class="font-bold text-base text-slate-800 flex items-center gap-2"><i data-lucide="building" class="w-5 h-5 text-blue-600"></i><span>自社情報・見積設定</span></h2>
+            <p class="text-xs text-slate-500 mt-1">ここで登録した情報はブラウザに保存され、見積書へ自動反映されます。</p>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="saveCompanySettings()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-xs font-semibold">自社情報を保存</button>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div><label class="block font-semibold text-slate-600 mb-1">会社名 / 屋号 *</label><input id="company-name" class="w-full cell-input rounded p-2 font-medium"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">部署名</label><input id="company-dept" class="w-full cell-input rounded p-2"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">担当者名</label><input id="company-contact" class="w-full cell-input rounded p-2"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">郵便番号</label><input id="company-postal" class="w-full cell-input rounded p-2"></div>
+          <div class="md:col-span-2"><label class="block font-semibold text-slate-600 mb-1">所在地住所</label><input id="company-address" class="w-full cell-input rounded p-2"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">TEL</label><input id="company-tel" class="w-full cell-input rounded p-2"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">FAX</label><input id="company-fax" class="w-full cell-input rounded p-2"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">メール</label><input id="company-email" type="email" class="w-full cell-input rounded p-2"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">Webサイト</label><input id="company-website" class="w-full cell-input rounded p-2"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">適格請求書発行事業者登録番号</label><input id="company-t-num" class="w-full cell-input rounded p-2"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">見積書有効期限（日）</label><input id="quote-valid-days" type="number" min="1" class="w-full cell-input rounded p-2"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">通常税率 (%)</label><input id="tax-rate-normal" type="number" step="0.1" class="w-full cell-input rounded p-2 font-bold"></div>
+          <div><label class="block font-semibold text-slate-600 mb-1">軽減税率 (%)</label><input id="tax-rate-reduced" type="number" step="0.1" class="w-full cell-input rounded p-2 font-bold text-emerald-800"></div>
+          <div class="md:col-span-3"><label class="block font-semibold text-slate-600 mb-1">見積書フッター / 備考</label><textarea id="company-quote-note" rows="2" class="w-full cell-input rounded p-2"></textarea></div>
+        </div>
+        <div class="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+          <button onclick="exportIntegratedBackup()" class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1.5"><i data-lucide="upload" class="w-4 h-4"></i>自社情報＋商品マスター＋セット設定を書き出す</button>
+          <label class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs font-semibold cursor-pointer flex items-center gap-1.5"><i data-lucide="download" class="w-4 h-4"></i>バックアップを読み込む<input type="file" id="integrated-backup-file" accept="application/json,.json" onchange="importIntegratedBackup(event)" class="hidden"></label>
+        </div>
+      </div>
+
+      <!-- 2. 商品マスター管理 (32項目対応 & 編集・追加・削除) -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-slate-800 text-white px-5 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 class="font-bold text-base flex items-center space-x-2">
+              <i data-lucide="box" class="w-5 h-5 text-blue-400"></i>
+              <span>商品マスター管理 (32属性項目対応)</span>
+            </h2>
+            <p class="text-xs text-slate-400">各アイテムの修正・追加・削除・軽減税率設定・CSV/JSON入出力</p>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <button onclick="exportProductMasterCSV()" class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center space-x-1.5">
+              <i data-lucide="upload" class="w-4 h-4 text-emerald-400"></i>
+              <span>CSV/JSON エクスポート</span>
+            </button>
+            <label class="bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center space-x-1.5 cursor-pointer">
+              <i data-lucide="download" class="w-4 h-4 text-blue-400"></i>
+              <span>CSV/JSON インポート</span>
+              <input type="file" id="master-import-file" accept=".csv, .json" onchange="importProductMaster(event)" class="hidden">
+            </label>
+            <button onclick="openProductEditModal(null)" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center space-x-1 shadow-sm">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span>新規商品追加</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="p-5 overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-100 text-slate-600 uppercase border-b border-slate-200">
+              <tr>
+                <th class="py-2.5 px-2">ステータス</th>
+                <th class="py-2.5 px-2">型番</th>
+                <th class="py-2.5 px-2">商品名</th>
+                <th class="py-2.5 px-2">仕入先</th>
+                <th class="py-2.5 px-2">大カテゴリ</th>
+                <th class="py-2.5 px-2 text-right">上代(円)</th>
+                <th class="py-2.5 px-2 text-right">仕入価格</th>
+                <th class="py-2.5 px-2 text-center">軽減税率</th>
+                <th class="py-2.5 px-2 text-center">並び順</th>
+                <th class="py-2.5 px-2 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody id="product-master-rows" class="divide-y divide-slate-200"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 3. 計算グループマスター管理 -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-slate-800 text-white px-5 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 class="font-bold text-base flex items-center space-x-2">
+              <i data-lucide="calculator" class="w-5 h-5 text-amber-400"></i>
+              <span>計算グループマスター</span>
+            </h2>
+            <p class="text-xs text-slate-400">複数商品をひとつの必要量として計算し、構成比または対応人数を使って商品へ配分します。</p>
+          </div>
+          <button onclick="addNewCalcGroup_()" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center space-x-1 shadow-sm">
+            <i data-lucide="plus" class="w-4 h-4"></i><span>新規計算グループ追加</span>
+          </button>
+        </div>
+        <div class="px-5 pt-4 pb-2 text-xs text-slate-600 bg-amber-50 border-b border-amber-100">
+          <b>使い分け：</b>計算グループあり＝複数SKUをまとめて必要量を計算。グループなし＝商品単体で計算。<b>内容量無視</b>は人数・日数・内容量を使わず商品単位で必要数を扱います。
+        </div>
+        <div class="p-5 overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-100 text-slate-600 border-b border-slate-200">
+              <tr>
+                <th class="py-2.5 px-2">計算グループ</th><th class="py-2.5 px-2">必要単位</th><th class="py-2.5 px-2">計算タイプ</th>
+                <th class="py-2.5 px-2">1人1日必要量</th><th class="py-2.5 px-2">対応人数</th><th class="py-2.5 px-2">最低必要量</th>
+                <th class="py-2.5 px-2">標準構成</th><th class="py-2.5 px-2">備考</th><th class="py-2.5 px-2">操作</th>
+              </tr>
+            </thead>
+            <tbody id="calc-group-master-rows" class="divide-y divide-slate-200"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 4. オプションセットマスター管理 (リネーム済 & 分類/計算単位の編集・追加・削除) -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-slate-800 text-white px-5 py-4 flex items-center justify-between">
+          <div>
+            <h2 class="font-bold text-base flex items-center space-x-2">
+              <i data-lucide="layers" class="w-5 h-5 text-teal-400"></i>
+              <span>オプションセットマスター管理</span>
+            </h2>
+            <p class="text-xs text-slate-400">非常持ち出しパック(A)および避難所設備(C)等の定義・分類・計算単位・構成管理</p>
+          </div>
+          <button onclick="addNewStandardSetDef()" class="bg-teal-600 hover:bg-teal-700 text-white px-3 py-1.5 rounded text-xs font-medium flex items-center space-x-1 shadow-sm">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>新規オプションセット追加</span>
+          </button>
+        </div>
+
+        <div class="p-5 overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-100 text-slate-600 uppercase border-b border-slate-200">
+              <tr>
+                <th class="py-2.5 px-2">セットID</th>
+                <th class="py-2.5 px-2">セット名称</th>
+                <th class="py-2.5 px-2">分類</th>
+                <th class="py-2.5 px-2">計算単位</th>
+                <th class="py-2.5 px-2">パラメータ(対応人数/割合/固定)</th>
+                <th class="py-2.5 px-2">構成数</th>
+                <th class="py-2.5 px-2 text-right">上代</th>
+                <th class="py-2.5 px-2 text-right">下代</th>
+                <th class="py-2.5 px-2 text-right">粗利率</th>
+                <th class="py-2.5 px-2 text-center">構成編集</th>
+                <th class="py-2.5 px-2 text-center">削除</th>
+              </tr>
+            </thead>
+            <tbody id="standard-set-master-rows" class="divide-y divide-slate-200"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- MODAL: 商品マスター詳細編集 (32項目対応) -->
+  <div id="product-edit-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+      <div class="bg-slate-800 text-white px-6 py-4 flex items-center justify-between">
+        <h3 id="product-modal-title" class="font-bold text-base">商品マスター項目編集</h3>
+        <button onclick="closeProductEditModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="p-6 overflow-y-auto flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+        <div><label class="font-semibold text-slate-600 block mb-1">商品ステータス <span class="text-rose-600">*</span></label><select id="pedit-status" class="w-full cell-input rounded p-2"></select></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">仕入先</label><input type="text" id="pedit-supplier" class="w-full cell-input rounded p-2"></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">商品名 <span class="text-rose-600">*</span></label><input type="text" id="pedit-name" class="w-full cell-input rounded p-2 font-bold"></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">型番</label><input type="text" id="pedit-model" class="w-full cell-input rounded p-2"></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">商品URL</label><input type="text" id="pedit-url" class="w-full cell-input rounded p-2"></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">画像URL</label><input type="text" id="pedit-img" class="w-full cell-input rounded p-2"></div>
+        
+        <div class="flex items-center space-x-2 pt-4"><input type="checkbox" id="pedit-forBiz" class="w-4 h-4"><label class="font-semibold">事業者向け</label></div>
+        <div class="flex items-center space-x-2 pt-4"><input type="checkbox" id="pedit-forHome" class="w-4 h-4"><label class="font-semibold">個人・家庭向け</label></div>
+        <div class="flex items-center space-x-2 pt-4"><input type="checkbox" id="pedit-forShelter" class="w-4 h-4"><label class="font-semibold">避難所向け</label></div>
+
+        <div><label class="font-semibold text-slate-600 block mb-1">大カテゴリ <span class="text-rose-600">*</span></label><select id="pedit-catLarge" onchange="refreshProductMasterOptions_(this.value,'')" class="w-full cell-input rounded p-2"></select></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">小カテゴリ <span class="text-rose-600">*</span></label><select id="pedit-catSmall" class="w-full cell-input rounded p-2"></select></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">用途タグ</label><input type="text" id="pedit-tags" class="w-full cell-input rounded p-2"></div>
+
+        <div><label class="font-semibold text-slate-600 block mb-1">計算グループ</label><select id="pedit-calcGroup" onchange="updateProductCalcGroupRequired_()" class="w-full cell-input rounded p-2"></select></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">内容量</label><input type="text" id="pedit-capacity" class="w-full cell-input rounded p-2"></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">単位</label><select id="pedit-unit" class="w-full cell-input rounded p-2"></select></div>
+
+        <div><label id="pedit-baseRatio-label" class="font-semibold text-slate-600 block mb-1">基本構成比</label><input type="text" id="pedit-baseRatio" class="w-full cell-input rounded p-2"></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">計算タイプ <span class="text-rose-600">*</span></label><select id="pedit-calcType" class="w-full cell-input rounded p-2"></select></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">対応人数</label><input type="number" id="pedit-capPeople" class="w-full cell-input rounded p-2"></div>
+
+        <div><label class="font-semibold text-slate-600 block mb-1">1日必要数</label><input type="number" id="pedit-dailyNeed" class="w-full cell-input rounded p-2"></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">最低必要数</label><input type="number" id="pedit-minNeed" class="w-full cell-input rounded p-2"></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">ミニマム <span class="text-rose-600">*</span></label><input type="number" id="pedit-minimum" class="w-full cell-input rounded p-2"></div>
+
+        <div><label class="font-semibold text-slate-600 block mb-1">優先度</label><select id="pedit-priority" class="w-full cell-input rounded p-2"></select></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">保存期間</label><input type="text" id="pedit-shelfLife" class="w-full cell-input rounded p-2"></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">保管条件</label><input type="text" id="pedit-storageCond" class="w-full cell-input rounded p-2"></div>
+
+        <div><label class="font-semibold text-slate-600 block mb-1">使用期限</label><input type="text" id="pedit-expDate" class="w-full cell-input rounded p-2"></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">上代 (販売定価) <span class="text-rose-600">*</span></label><input type="number" id="pedit-price" class="w-full cell-input rounded p-2 font-bold text-blue-900"></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">仕入価格</label><input type="number" id="pedit-cost" class="w-full cell-input rounded p-2 font-bold"></div>
+
+        <div><label class="font-semibold text-slate-600 block mb-1">納期</label><input type="text" id="pedit-leadTime" class="w-full cell-input rounded p-2"></div>
+        <div><label class="font-semibold text-slate-600 block mb-1">在庫</label><input type="number" id="pedit-stock" class="w-full cell-input rounded p-2"></div>
+        
+        <div class="flex items-center space-x-2 bg-emerald-50 p-2 rounded border border-emerald-200">
+          <input type="checkbox" id="pedit-isReducedTax" class="w-4 h-4 text-emerald-600">
+          <label class="font-bold text-emerald-900">軽減税率対象 (8%)</label>
+        </div>
+
+        <div class="md:col-span-3"><label class="font-semibold text-slate-600 block mb-1">備考</label><input type="text" id="pedit-note" class="w-full cell-input rounded p-2"></div>
+      </div>
+      <div class="bg-slate-50 px-6 py-3 text-right border-t">
+        <button onclick="saveProductModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded text-xs font-semibold">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: 見積書プレビュー -->
+  <div id="quote-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+      <div class="bg-slate-800 text-white px-6 py-4 flex items-center justify-between no-print">
+        <h3 id="quote-modal-title" class="font-bold text-lg flex items-center space-x-2">
+          <i data-lucide="file-spreadsheet" class="w-5 h-5 text-blue-400"></i>
+          <span>見積書プレビュー</span>
+        </h3>
+        <div class="flex items-center space-x-3">
+          <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs font-semibold flex items-center space-x-1">
+            <i data-lucide="printer" class="w-4 h-4"></i>
+            <span>印刷 / PDF保存</span>
+          </button>
+          <button onclick="closeQuoteModal()" class="text-slate-400 hover:text-white">
+            <i data-lucide="x" class="w-6 h-6"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="p-8 overflow-y-auto flex-1 bg-white" id="printable-quote">
+        <div class="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-6">
+          <div>
+            <h1 id="quote-doc-title" class="text-2xl font-black text-slate-900 tracking-wider mb-1">御 見 積 書</h1>
+            <p id="quote-doc-subtitle" class="text-xs text-slate-500">防災備蓄サポート</p>
+          </div>
+          <div class="text-right text-xs text-slate-600 space-y-1">
+            <p>発行日: <span id="quote-date"></span></p>
+            <p>見積番号: <span id="quote-number"></span></p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-8 mb-6 text-xs">
+          <div class="border-b border-slate-300 pb-2">
+            <p class="text-sm font-bold text-slate-900 mb-1"><span id="quote-client-name">◯◯株式会社 / 御中</span></p>
+            <p id="quote-client-dept" class="text-slate-600"></p>
+            <p id="quote-client-person" class="text-slate-600"></p>
+            <p class="text-slate-600">件名: <span id="quote-subject-display">防災備蓄品及び避難設備導入提案の件</span></p>
+            <p class="text-slate-600 mt-2">下記の通りお見積申し上げます。</p>
+            <p id="quote-client-address" class="text-slate-500 mt-1"></p>
+            <p id="quote-client-tel" class="text-slate-500"></p>
+          </div>
+          <div class="text-right space-y-1 text-slate-600">
+            <p id="q-disp-comp-name" class="font-bold text-slate-900 text-sm"></p>
+            <p id="q-disp-comp-tnum" class="text-slate-700 font-medium"></p>
+            <p id="q-disp-comp-addr"></p>
+            <p id="q-disp-comp-tel"></p>
+          </div>
+        </div>
+
+        <div id="quote-total-box" class="bg-slate-100 p-4 rounded-lg mb-6 flex justify-between items-center border border-slate-300">
+          <span class="font-bold text-slate-700 text-sm">御見積合計金額 (税込):</span>
+          <div class="text-sm font-bold text-slate-600 mb-1">税抜小計：<span id="quote-subtotal-display">¥0</span></div><span id="quote-grand-total" class="text-2xl font-black text-slate-900">¥0-</span>
+        </div>
+
+        <table class="w-full text-left text-xs mb-6 border-collapse">
+          <thead>
+            <tr class="bg-slate-800 text-white font-semibold">
+              <th class="py-2 px-3">No.</th>
+              <th class="py-2 px-3">型番 / 品名・仕様</th>
+              <th class="py-2 px-3 text-right">単価 (税抜)</th>
+              <th class="py-2 px-3 text-right">数量</th>
+              <th class="py-2 px-3 text-right">金額 (税抜)</th>
+              <th class="py-2 px-3">備考</th>
+            </tr>
+          </thead>
+          <tbody id="quote-table-body" class="divide-y divide-slate-200 border-b border-slate-300"></tbody>
+        </table>
+
+        <!-- 税率別内訳表示エリア -->
+        <div id="quote-tax-breakdown" class="bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs mb-6 space-y-1 text-slate-700">
+          <h4 class="font-bold border-b pb-1 mb-2">【消費税額内訳】</h4>
+          <div class="flex justify-between" id="tax-row-normal">
+            <span>通常税率 (<span id="q-rate-norm-label">10</span>%) 対象小計: ¥<span id="q-sub-norm">0</span></span>
+            <span>消費税: ¥<span id="q-tax-norm">0</span></span>
+          </div>
+          <div class="flex justify-between" id="tax-row-reduced">
+            <span>軽減税率 (<span id="q-rate-red-label">8</span>%) 対象小計: ¥<span id="q-sub-red">0</span></span>
+            <span>消費税: ¥<span id="q-tax-red">0</span></span>
+          </div>
+        </div>
+
+        <!-- サブスク＆違約金特記事項 (契約期間の代わりに規約を表示) -->
+        <div id="quote-sub-conditions" class="hidden bg-blue-50 p-4 rounded-lg border border-blue-200 text-xs space-y-1.5 mb-6 text-blue-900">
+          <h4 class="font-bold border-b border-blue-200 pb-1">【サブスクリプションご契約条件 ＆ 解約違約金に関する特記事項】</h4>
+          <p class="font-bold text-rose-700">※ご契約後12か月以内の解約はできません。</p>
+          <p>・13ヶ月以降24ヶ月以内の解約違約金: 一律 <span id="q-pen-t1" class="font-bold">¥50,000</span></p>
+          <p>・25ヶ月以降の解約違約金: 一律 <span id="q-pen-t2" class="font-bold">¥20,000</span></p>
+          <p>・月額支払額 (税抜): <span id="quote-sub-monthly" class="font-bold">¥0</span> / 月 （初回導入手数料: <span id="quote-sub-init">¥0</span>）</p>
+        </div>
+
+        <div class="text-xs text-slate-500 space-y-1">
+          <p>※有効期限: 発行日より<span id="quote-valid-days-display">30</span>日間</p>
+          <p id="quote-company-note-display"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: オプションセット構成商品編集 -->
+  <div id="set-items-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col">
+      <div class="bg-slate-800 text-white px-5 py-3 flex items-center justify-between">
+        <h3 id="set-items-modal-title" class="font-bold text-sm">オプションセット構成商品の編集</h3>
+        <button onclick="closeSetItemsModal()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="p-5 overflow-y-auto max-h-[70vh] space-y-4">
+        <div class="grid grid-cols-3 gap-3 rounded-lg bg-slate-50 border border-slate-200 p-3">
+          <div><div class="text-[11px] text-slate-500">構成上代合計</div><div id="set-summary-list-price" class="font-bold text-slate-800">¥0</div></div>
+          <div><div class="text-[11px] text-slate-500">構成下代合計</div><div id="set-summary-cost" class="font-bold text-slate-800">¥0</div></div>
+          <div><div class="text-[11px] text-slate-500">セット粗利率</div><div id="set-summary-margin" class="font-bold text-teal-700">0.0%</div></div>
+        </div>
+        <div class="flex justify-between items-center gap-4">
+          <span class="text-xs font-semibold text-slate-600">セット内商品構成</span>
+          <label class="text-xs font-semibold text-slate-600 flex items-center gap-2 whitespace-nowrap">セット販売価格
+            <input id="set-custom-price" type="number" min="0" step="1" class="w-28 text-right cell-manual rounded p-1 font-bold">
+            <span class="text-[10px] font-normal text-slate-400">空欄＝構成上代</span>
+          </label>
+          <button onclick="addSetItemRow()" class="bg-teal-600 text-white px-2.5 py-1 rounded text-xs font-semibold flex items-center space-x-1">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i><span>商品追加</span>
+          </button>
+        </div>
+        <table class="w-full text-left text-xs">
+          <thead class="bg-slate-100 text-slate-600 uppercase border-b border-slate-200">
+            <tr>
+              <th class="py-2 px-2">対象商品</th>
+              <th class="py-2 px-2 text-right">セット内数量</th>
+              <th class="py-2 px-2">備考</th>
+              <th class="py-2 px-2 text-center">削除</th>
+            </tr>
+          </thead>
+          <tbody id="set-items-editor-body" class="divide-y divide-slate-200"></tbody>
+        </table>
+      </div>
+      <div class="bg-slate-50 px-5 py-3 text-right">
+        <button onclick="saveSetItemsModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-xs font-semibold">保存して閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: 案件呼び出し -->
+  <div id="case-manager-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div class="bg-slate-800 text-white px-5 py-3 flex items-center justify-between">
+        <div>
+          <h3 class="font-bold text-sm flex items-center gap-2"><i data-lucide="folder-open" class="w-4 h-4"></i>保存済み案件</h3>
+          <p class="text-[11px] text-slate-400 mt-0.5">このブラウザに保存されている案件です</p>
+        </div>
+        <button onclick="closeCaseManager()" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="p-5 overflow-y-auto">
+        <div id="case-manager-empty" class="hidden text-center py-10 text-sm text-slate-400">保存済み案件はありません。</div>
+        <div id="case-list-body" class="space-y-2"></div>
+      </div>
+      <div class="bg-slate-50 px-5 py-3 text-right border-t">
+        <button onclick="closeCaseManager()" class="px-4 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS Engine -->
+  <script>
+    // 32項目構造対応商品マスター
+    let products = [
+      {
+        status: '有効', supplier: 'スーパーデリバリー', name: 'タテ・ヨコどっちもテント(一人用)', model: 'T2U08',
+        url: 'https://www.superdelivery.com/p/r/pd_p/14244184/', img: '', forBiz: true, forHome: false, forShelter: true,
+        catLarge: 'シェルター・プライバシー', catSmall: 'プライバシーテント', tags: 'プライバシー, 簡易個室', calcGroup: '',
+        capacity: '1', unit: '張', baseRatio: '', calcType: '人数÷対応人数', capPeople: 50, dailyNeed: 0, minNeed: 0, minimum: 1,
+        priority: '推奨', shelfLife: '', storageCond: '常温', expDate: '期限なし', price: 5500, cost: 3402, leadTime: '', stock: 20, isReducedTax: false, note: ''
+      },
+      {
+        status: '有効', supplier: 'メーカーA', name: 'アルファ米 5年保存 (各種)', model: 'AF-01',
+        url: '', img: '', forBiz: true, forHome: true, forShelter: true,
+        catLarge: '食料・飲料', catSmall: '非常食', tags: '非常食', calcGroup: '非常食',
+        capacity: '1', unit: '食', baseRatio: '1', calcType: '人数', capPeople: 1, dailyNeed: 3, minNeed: 3, minimum: 1,
+        priority: '必須', shelfLife: '5年', storageCond: '常温', expDate: '5年', price: 380, cost: 240, leadTime: '', stock: 500, isReducedTax: true, note: '軽減税率対象'
+      },
+      {
+        status: '有効', supplier: 'メーカーB', name: '保存水 500ml 6年保存', model: 'W-500',
+        url: '', img: '', forBiz: true, forHome: true, forShelter: true,
+        catLarge: '水・浄水', catSmall: '飲料水', tags: '水', calcGroup: '飲料水',
+        capacity: '500ml', unit: '本', baseRatio: '1', calcType: '人数', capPeople: 1, dailyNeed: 3, minNeed: 3, minimum: 1,
+        priority: '必須', shelfLife: '6年', storageCond: '常温', expDate: '6年', price: 160, cost: 90, leadTime: '', stock: 1200, isReducedTax: true, note: '軽減税率対象'
+      }
+    ];
+
+    // 計算グループマスター：複数SKUを共通の必要量として扱うための定義
+    let calcGroups = [
+      {name:'飲料水', unit:'L', calcType:'人数×日数', dailyNeed:3, capPeople:0, minNeed:0, standard:'500ml 2本＋2L 1本', note:'飲料用と生活用水として設定'},
+      {name:'非常食', unit:'食', calcType:'人数×日数', dailyNeed:3, capPeople:0, minNeed:0, standard:'1日3食', note:''},
+      {name:'携帯トイレ・袋', unit:'回', calcType:'人数×日数', dailyNeed:5, capPeople:0, minNeed:0, standard:'1日5回想定', note:''},
+      {name:'トイレ', unit:'基', calcType:'人数÷対応人数', dailyNeed:0, capPeople:50, minNeed:0, standard:'50人に1基', note:'100人に3基など商品特性に応じて調整'},
+      {name:'内容量無視', unit:'', calcType:'内容量無視', dailyNeed:0, capPeople:0, minNeed:0, standard:'', note:'人数・日数・内容量を使わず商品単位で扱う'}
+    ];
+
+    // オプションセットマスター（旧標準セット）
+    let standardSets = [
+      { id: 'A001', name: '非常持ち出しパック(基本)', category: 'A:非常持ち出しパック', unitType: '人数', capacity: null, ratio: null, fixedCount: null, note: '個人宅向け', active: true },
+      { id: 'A002', name: '従業員ケアパック', category: 'A:非常持ち出しパック', unitType: '人数×割合', capacity: null, ratio: 30, fixedCount: null, note: '事業者向け', active: true },
+      { id: 'C001', name: '避難所設備セット(小規模)', category: 'C:避難所設備', unitType: '固定数', capacity: null, ratio: null, fixedCount: 1, note: 'ホテル等・施設向け', active: false }
+    ];
+
+    let standardSetItems = [
+      { setId: 'A001', productId: 'T2U08', qty: 1, note: 'テント' },
+      { setId: 'A001', productId: 'W-500', qty: 2, note: '保存水' },
+      { setId: 'A002', productId: 'AF-01', qty: 3, note: '保存食' }
+    ];
+
+    let currentCalculatedProposal = [];
+    let selectedSubProductIds = new Set();
+    let subChartInstance = null;
+    let editingSetId = null;
+    let editingProductIndex = null;
+
+    // 案件保存・呼び出し・自動保存
+    const CASE_STORAGE_KEY = 'resilienceProMatrix_cases_v2';
+    const CASE_DRAFT_KEY = 'resilienceProMatrix_draft_v2';
+    const MASTER_STORAGE_KEY = 'resilienceProMatrix_master_v2';
+    let currentCaseId = null;
+    let currentCaseName = '未保存の案件';
+    let autoSaveTimer = null;
+    let proposalOverrides = {};
+    // オプションセットの個数。割合連動以外は基本条件人数と切り離して案件ごとに管理する。
+    let optionSetCounts = {};
+    let subscriptionSetCounts = {};
+    let subscriptionSimulation = {};
+    let currentCaseCompanySnapshot = null;
+    let companyInfo = {
+      name: '株式会社DNS', dept: 'コーポレートバリューー本部 アウトドア事業課', contact: '中島',
+      postal: '〒811-2208', address: '福岡県糟屋郡志免町吉原93-1 A-3', tel: '070-2824-7860', fax: '',
+      email: '', website: 'https://www.dns-jp.co.jp/', tNum: '', validDays: 30, normalTax: 10, reducedTax: 8, quoteNote: ''
+    };
+
+    window.addEventListener('DOMContentLoaded', () => {
+      if (window.lucide && typeof window.lucide.createIcons === 'function') { window.lucide.createIcons(); }
+      loadMasterSettings_();
+      applyCompanyInfoToForm_();
+      restoreDraftOrInitialState_();
+      calculateAll();
+      renderMasterTables();
+      setupCaseAutoSave_();
+    });
+
+    /* =========================================================
+       自社情報・マスター永続化
+       ========================================================= */
+    function getMasterStorage_() {
+      try { return JSON.parse(localStorage.getItem(MASTER_STORAGE_KEY) || 'null'); }
+      catch (e) { return null; }
+    }
+
+    function loadMasterSettings_() {
+      const saved = getMasterStorage_();
+      if (!saved) return;
+      if (saved.companyInfo) companyInfo = Object.assign(companyInfo, saved.companyInfo);
+      if (Array.isArray(saved.products)) products = saved.products;
+      if (Array.isArray(saved.calcGroups)) calcGroups = saved.calcGroups;
+      if (Array.isArray(saved.standardSets)) standardSets = saved.standardSets;
+      if (Array.isArray(saved.standardSetItems)) standardSetItems = saved.standardSetItems;
+    }
+
+    function saveMasterSettings_() {
+      const data = {
+        version: 2,
+        updatedAt: new Date().toISOString(),
+        companyInfo: JSON.parse(JSON.stringify(companyInfo)),
+        products: JSON.parse(JSON.stringify(products)),
+        calcGroups: JSON.parse(JSON.stringify(calcGroups)),
+        standardSets: JSON.parse(JSON.stringify(standardSets)),
+        standardSetItems: JSON.parse(JSON.stringify(standardSetItems))
+      };
+      localStorage.setItem(MASTER_STORAGE_KEY, JSON.stringify(data));
+      return data;
+    }
+
+    function applyCompanyInfoToForm_() {
+      const map = {
+        'company-name': companyInfo.name, 'company-dept': companyInfo.dept, 'company-contact': companyInfo.contact,
+        'company-postal': companyInfo.postal, 'company-address': companyInfo.address, 'company-tel': companyInfo.tel,
+        'company-fax': companyInfo.fax, 'company-email': companyInfo.email, 'company-website': companyInfo.website,
+        'company-t-num': companyInfo.tNum, 'quote-valid-days': companyInfo.validDays,
+        'tax-rate-normal': companyInfo.normalTax, 'tax-rate-reduced': companyInfo.reducedTax, 'company-quote-note': companyInfo.quoteNote
+      };
+      Object.entries(map).forEach(([id,v]) => { const el=document.getElementById(id); if(el) el.value=v ?? ''; });
+    }
+
+    function readCompanyInfoFromForm_() {
+      companyInfo = {
+        name: document.getElementById('company-name')?.value || '', dept: document.getElementById('company-dept')?.value || '',
+        contact: document.getElementById('company-contact')?.value || '', postal: document.getElementById('company-postal')?.value || '',
+        address: document.getElementById('company-address')?.value || '', tel: document.getElementById('company-tel')?.value || '',
+        fax: document.getElementById('company-fax')?.value || '', email: document.getElementById('company-email')?.value || '',
+        website: document.getElementById('company-website')?.value || '', tNum: document.getElementById('company-t-num')?.value || '',
+        validDays: parseInt(document.getElementById('quote-valid-days')?.value) || 30,
+        normalTax: parseFloat(document.getElementById('tax-rate-normal')?.value) || 10,
+        reducedTax: parseFloat(document.getElementById('tax-rate-reduced')?.value) || 8,
+        quoteNote: document.getElementById('company-quote-note')?.value || ''
+      };
+      return companyInfo;
+    }
+
+    function saveCompanySettings() {
+      readCompanyInfoFromForm_();
+      saveMasterSettings_();
+      if (currentCaseId) currentCaseCompanySnapshot = JSON.parse(JSON.stringify(companyInfo));
+      setAutosaveStatus_('自社情報・マスターを保存しました', 'ok');
+      alert('自社情報とマスター設定を保存しました。');
+    }
+
+    function exportIntegratedBackup() {
+      readCompanyInfoFromForm_();
+      const data = saveMasterSettings_();
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json;charset=utf-8'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download=`防災提案_マスター統合バックアップ_${new Date().toISOString().slice(0,10)}.json`; a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    }
+
+    function importIntegratedBackup(event) {
+      const file=event.target.files[0]; event.target.value=''; if(!file) return;
+      const reader=new FileReader();
+      reader.onload=e=>{
+        try {
+          const data=JSON.parse(e.target.result);
+          if(!data || !data.companyInfo || !Array.isArray(data.products)) throw new Error('invalid');
+          if(!confirm('現在の自社情報・商品マスター・セット設定をバックアップ内容で置き換えますか？')) return;
+          companyInfo=Object.assign(companyInfo,data.companyInfo);
+          products=data.products;
+          if(Array.isArray(data.calcGroups)) calcGroups=data.calcGroups;
+          if(Array.isArray(data.standardSets)) standardSets=data.standardSets;
+          if(Array.isArray(data.standardSetItems)) standardSetItems=data.standardSetItems;
+          saveMasterSettings_(); applyCompanyInfoToForm_(); renderMasterTables(); calculateAll();
+          alert('バックアップを復元しました。');
+        } catch(err) { alert('バックアップを読み込めませんでした。'); }
+      };
+      reader.readAsText(file);
+    }
+
+    function collectQuoteRecipient_() {
+      const ids=['name','dept','person','postal','address','tel','email','subject'];
+      const out={}; ids.forEach(k=>{const el=document.getElementById('quote-recipient-'+k); if(el) out[k]=el.value||'';});
+      return out;
+    }
+    function applyQuoteRecipient_(r) {
+      const src=r||{};
+      ['name','dept','person','postal','address','tel','email','subject'].forEach(k=>{const el=document.getElementById('quote-recipient-'+k); if(el) el.value=src[k]|| (k==='subject' ? '防災備蓄品及び避難設備導入提案の件' : '');});
+    }
+
+    function getQuoteCompanyInfo_() {
+      return currentCaseCompanySnapshot || companyInfo;
+    }
+
+    /* =========================================================
+       案件保存・呼び出し・自動保存
+       商品マスターは案件データに含めず、案件固有の入力・調整値のみ保存します。
+       ========================================================= */
+
+    function getCaseStorage_() {
+      try {
+        return JSON.parse(localStorage.getItem(CASE_STORAGE_KEY) || '[]');
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function setCaseStorage_(cases) {
+      localStorage.setItem(CASE_STORAGE_KEY, JSON.stringify(cases));
+    }
+
+    function setAutosaveStatus_(text, tone) {
+      const el = document.getElementById('autosave-status');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'text-[11px] mt-0.5 ' + (tone === 'ok' ? 'text-emerald-600' : tone === 'saving' ? 'text-blue-600' : 'text-slate-400');
+    }
+
+    function collectCurrentCaseData_() {
+      return {
+        version: 1,
+        id: currentCaseId,
+        name: currentCaseName,
+        updatedAt: new Date().toISOString(),
+        input: {
+          facilityType: document.getElementById('input-facility-type')?.value || 'business',
+          people: document.getElementById('input-people')?.value || '',
+          days: document.getElementById('input-days')?.value || ''
+        },
+        quoteRecipient: collectQuoteRecipient_(),
+        companyInfoSnapshot: JSON.parse(JSON.stringify(companyInfo)),
+        activeSets: standardSets.map(s => ({ id: s.id, active: !!s.active })),
+        proposalOverrides: JSON.parse(JSON.stringify(proposalOverrides || {})),
+        optionSetCounts: JSON.parse(JSON.stringify(optionSetCounts || {})),
+        subscriptionSetCounts: JSON.parse(JSON.stringify(subscriptionSetCounts || {})),
+        selectedSubProductIds: Array.from(selectedSubProductIds),
+        subscription: {
+          monthlyFee: document.getElementById('sub-monthly-fee-input')?.value || '',
+          analysisMonths: document.getElementById('sub-analysis-months')?.value || '',
+          replaceCycle: document.getElementById('sub-replace-cycle')?.value || '',
+          initFee: document.getElementById('sub-init-fee')?.value || '',
+          penaltyTier1: document.getElementById('penalty-tier1')?.value || '',
+          penaltyTier2: document.getElementById('penalty-tier2')?.value || '',
+          testCancelMonth: document.getElementById('test-cancel-month')?.value || ''
+        }
+      };
+    }
+
+    function applyCaseData_(data) {
+      if (!data || typeof data !== 'object') throw new Error('案件データが不正です。');
+
+      const input = data.input || {};
+      if (document.getElementById('input-facility-type')) document.getElementById('input-facility-type').value = input.facilityType || 'business';
+      if (document.getElementById('input-people')) document.getElementById('input-people').value = input.people || 50;
+      if (document.getElementById('input-days')) document.getElementById('input-days').value = input.days || 3;
+
+      const sub = data.subscription || {};
+      const setVal = (id, value) => { if (document.getElementById(id) && value !== undefined && value !== '') document.getElementById(id).value = value; };
+      setVal('sub-monthly-fee-input', sub.monthlyFee);
+      setVal('sub-analysis-months', sub.analysisMonths);
+      setVal('sub-replace-cycle', sub.replaceCycle);
+      setVal('sub-init-fee', sub.initFee);
+      setVal('penalty-tier1', sub.penaltyTier1);
+      setVal('penalty-tier2', sub.penaltyTier2);
+      setVal('test-cancel-month', sub.testCancelMonth);
+
+      const activeMap = {};
+      (data.activeSets || []).forEach(s => activeMap[s.id] = !!s.active);
+      standardSets.forEach(s => { if (Object.prototype.hasOwnProperty.call(activeMap, s.id)) s.active = activeMap[s.id]; });
+
+      proposalOverrides = data.proposalOverrides && typeof data.proposalOverrides === 'object' ? data.proposalOverrides : {};
+      optionSetCounts = data.optionSetCounts && typeof data.optionSetCounts === 'object' ? data.optionSetCounts : {};
+      subscriptionSetCounts = data.subscriptionSetCounts && typeof data.subscriptionSetCounts === 'object' ? data.subscriptionSetCounts : {};
+      selectedSubProductIds = new Set(Array.isArray(data.selectedSubProductIds) ? data.selectedSubProductIds : []);
+      applyQuoteRecipient_(data.quoteRecipient || {});
+      currentCaseCompanySnapshot = data.companyInfoSnapshot ? JSON.parse(JSON.stringify(data.companyInfoSnapshot)) : JSON.parse(JSON.stringify(companyInfo));
+
+      currentCaseId = data.id || null;
+      currentCaseName = data.name || '未保存の案件';
+      updateCurrentCaseLabel_();
+    }
+
+    function updateCurrentCaseLabel_() {
+      const el = document.getElementById('current-case-name');
+      if (el) el.textContent = currentCaseName || '未保存の案件';
+    }
+
+    function saveCase() {
+      readCompanyInfoFromForm_();
+      currentCaseCompanySnapshot = JSON.parse(JSON.stringify(companyInfo));
+      let name = currentCaseName;
+      if (!currentCaseId) {
+        name = prompt('案件名を入力してください。', document.getElementById('input-facility-type')?.value ? '新規防災提案' : '新規案件');
+        if (!name || !name.trim()) return;
+        name = name.trim();
+        currentCaseId = 'CASE-' + Date.now();
+        currentCaseName = name;
+      }
+
+      const data = collectCurrentCaseData_();
+      data.id = currentCaseId;
+      data.name = currentCaseName;
+      data.updatedAt = new Date().toISOString();
+
+      const cases = getCaseStorage_();
+      const idx = cases.findIndex(c => c.id === currentCaseId);
+      if (idx >= 0) cases[idx] = data;
+      else cases.unshift(data);
+      setCaseStorage_(cases);
+      localStorage.removeItem(CASE_DRAFT_KEY);
+      updateCurrentCaseLabel_();
+      setAutosaveStatus_('保存しました ' + formatCaseDate_(data.updatedAt), 'ok');
+      renderCaseList_();
+    }
+
+    function saveCurrentCaseSilently_() {
+      const data = collectCurrentCaseData_();
+      if (currentCaseId) {
+        data.id = currentCaseId;
+        data.name = currentCaseName;
+        const cases = getCaseStorage_();
+        const idx = cases.findIndex(c => c.id === currentCaseId);
+        if (idx >= 0) cases[idx] = data;
+        else cases.unshift(data);
+        setCaseStorage_(cases);
+      } else {
+        localStorage.setItem(CASE_DRAFT_KEY, JSON.stringify(data));
+      }
+      setAutosaveStatus_('自動保存済み ' + formatCaseDate_(data.updatedAt), 'ok');
+    }
+
+    function scheduleAutoSave_() {
+      clearTimeout(autoSaveTimer);
+      setAutosaveStatus_('自動保存中…', 'saving');
+      autoSaveTimer = setTimeout(() => {
+        try { saveCurrentCaseSilently_(); } catch (e) { setAutosaveStatus_('自動保存に失敗しました', ''); }
+      }, 700);
+    }
+
+    function setupCaseAutoSave_() {
+      const isCaseArea = target => {
+        if (!target) return false;
+        return !!target.closest('#tab-proposal, #tab-subscription');
+      };
+
+      document.addEventListener('input', e => {
+        if (isCaseArea(e.target)) scheduleAutoSave_();
+      });
+      document.addEventListener('change', e => {
+        if (isCaseArea(e.target)) scheduleAutoSave_();
+        if (e.target.closest('#tab-master')) {
+          readCompanyInfoFromForm_();
+          saveMasterSettings_();
+          if (currentCaseId) currentCaseCompanySnapshot = JSON.parse(JSON.stringify(companyInfo));
+        }
+      });
+      document.addEventListener('input', e => {
+        if (e.target.closest('#tab-master')) {
+          clearTimeout(window.__masterSaveTimer);
+          window.__masterSaveTimer=setTimeout(()=>{
+            readCompanyInfoFromForm_(); saveMasterSettings_();
+            if(currentCaseId) currentCaseCompanySnapshot=JSON.parse(JSON.stringify(companyInfo));
+          },500);
+        }
+      });
+      window.addEventListener('beforeunload', () => {
+        try { saveCurrentCaseSilently_(); } catch (e) {}
+      });
+    }
+
+    function restoreDraftOrInitialState_() {
+      try {
+        const draft = JSON.parse(localStorage.getItem(CASE_DRAFT_KEY) || 'null');
+        if (draft && draft.input) {
+          if (confirm('前回の自動保存データがあります。復元しますか？')) {
+            applyCaseData_(draft);
+            setAutosaveStatus_('自動保存データを復元しました', 'ok');
+            return;
+          }
+        }
+      } catch (e) {}
+      currentCaseId = null;
+      currentCaseName = '未保存の案件';
+      proposalOverrides = {};
+      optionSetCounts = {};
+      selectedSubProductIds = new Set();
+      currentCaseCompanySnapshot = JSON.parse(JSON.stringify(companyInfo));
+      updateCurrentCaseLabel_();
+    }
+
+    function newCase() {
+      if (!confirm('現在の案件を閉じて、新規案件を作成しますか？\
+現在の案件は自動保存されています。')) return;
+      currentCaseId = null;
+      currentCaseName = '未保存の案件';
+      proposalOverrides = {};
+      optionSetCounts = {};
+      selectedSubProductIds = new Set();
+      currentCaseCompanySnapshot = JSON.parse(JSON.stringify(companyInfo));
+      applyQuoteRecipient_({});
+      standardSets.forEach(s => { s.active = false; });
+      standardSets.forEach(s => {
+        if (s.id === 'A001' || s.id === 'A002') s.active = true;
+      });
+      document.getElementById('input-facility-type').value = 'business';
+      document.getElementById('input-people').value = 50;
+      document.getElementById('input-days').value = 3;
+      document.getElementById('sub-input-people').value = 50;
+      document.getElementById('sub-term-months').value = 36;
+      document.getElementById('sub-interest-rate').value = 4.5;
+      document.getElementById('sub-margin-rate').value = 10;
+      document.getElementById('sub-init-fee').value = 30000;
+      document.getElementById('penalty-tier1').value = 50000;
+      document.getElementById('penalty-tier2').value = 20000;
+      document.getElementById('test-cancel-month').value = 15;
+      updateCurrentCaseLabel_();
+      localStorage.removeItem(CASE_DRAFT_KEY);
+      calculateAll();
+      setAutosaveStatus_('新規案件を作成しました', 'ok');
+    }
+
+    function openCaseManager() {
+      renderCaseList_();
+      document.getElementById('case-manager-modal').classList.remove('hidden');
+      if (window.lucide && typeof window.lucide.createIcons === 'function') { window.lucide.createIcons(); }
+    }
+
+    function closeCaseManager() {
+      document.getElementById('case-manager-modal').classList.add('hidden');
+    }
+
+    function renderCaseList_() {
+      const body = document.getElementById('case-list-body');
+      const empty = document.getElementById('case-manager-empty');
+      const cases = getCaseStorage_().sort((a,b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
+      body.innerHTML = '';
+      empty.classList.toggle('hidden', cases.length > 0);
+
+      cases.forEach(c => {
+        const row = document.createElement('div');
+        row.className = 'border border-slate-200 rounded-lg p-3 flex flex-wrap items-center justify-between gap-3 hover:bg-slate-50';
+        row.innerHTML = `
+          <div class="min-w-0">
+            <div class="font-bold text-sm text-slate-800 truncate">${escapeHtml_(c.name || '名称未設定')}</div>
+            <div class="text-[11px] text-slate-400 mt-1">最終更新: ${formatCaseDate_(c.updatedAt)}${c.id === currentCaseId ? ' ・ 現在の案件' : ''}</div>
+          </div>
+          <div class="flex gap-2 shrink-0">
+            <button onclick="loadCaseById('${escapeJs_(c.id)}')" class="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold">呼び出す</button>
+            <button onclick="renameCaseById('${escapeJs_(c.id)}')" class="px-3 py-1.5 rounded border border-slate-300 bg-white hover:bg-slate-50 text-xs font-semibold">名前変更</button>
+            <button onclick="deleteCaseById('${escapeJs_(c.id)}')" class="px-3 py-1.5 rounded border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 text-xs font-semibold">削除</button>
+          </div>`;
+        body.appendChild(row);
+      });
+    }
+
+    function loadCaseById(id) {
+      const data = getCaseStorage_().find(c => c.id === id);
+      if (!data) { alert('案件が見つかりません。'); return; }
+      if (!confirm('「' + data.name + '」を呼び出しますか？\
+現在の入力内容は置き換わります。')) return;
+      try {
+        applyCaseData_(data);
+        localStorage.removeItem(CASE_DRAFT_KEY);
+        calculateAll();
+        renderSubscriptionTab();
+        closeCaseManager();
+        setAutosaveStatus_('案件を呼び出しました', 'ok');
+      } catch (e) {
+        alert('案件の呼び出しに失敗しました。');
+      }
+    }
+
+    function renameCaseById(id) {
+      const cases = getCaseStorage_();
+      const data = cases.find(c => c.id === id);
+      if (!data) return;
+      const name = prompt('新しい案件名を入力してください。', data.name || '案件');
+      if (!name || !name.trim()) return;
+      data.name = name.trim();
+      data.updatedAt = new Date().toISOString();
+      setCaseStorage_(cases);
+      if (id === currentCaseId) { currentCaseName = data.name; updateCurrentCaseLabel_(); }
+      renderCaseList_();
+    }
+
+    function deleteCaseById(id) {
+      const cases = getCaseStorage_();
+      const data = cases.find(c => c.id === id);
+      if (!data) return;
+      if (!confirm('「' + data.name + '」を削除しますか？')) return;
+      setCaseStorage_(cases.filter(c => c.id !== id));
+      if (id === currentCaseId) { currentCaseId = null; currentCaseName = '未保存の案件'; updateCurrentCaseLabel_(); }
+      renderCaseList_();
+    }
+
+    function exportCurrentCaseJSON() {
+      const data = collectCurrentCaseData_();
+      if (!data.id) data.name = prompt('書き出す案件名を入力してください。', '新規防災提案') || '新規防災提案';
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${sanitizeFileName_(data.name || '案件')}.json`;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }
+
+    function importCaseJSON(event) {
+      const file = event.target.files[0];
+      event.target.value = '';
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (!data.input || !data.subscription) throw new Error('invalid');
+          const newId = 'CASE-' + Date.now();
+          data.id = newId;
+          data.name = data.name || file.name.replace(/\\.json$/i, '');
+          data.updatedAt = new Date().toISOString();
+          const cases = getCaseStorage_();
+          cases.unshift(data);
+          setCaseStorage_(cases);
+          applyCaseData_(data);
+          calculateAll();
+          renderSubscriptionTab();
+          setAutosaveStatus_('案件ファイルを読み込みました', 'ok');
+          alert('案件の読み込みが完了しました。');
+        } catch (err) {
+          alert('案件ファイルを読み込めませんでした。JSON形式を確認してください。');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function formatCaseDate_(value) {
+      if (!value) return '-';
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return '-';
+      return d.toLocaleString('ja-JP', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+    }
+
+    function sanitizeFileName_(name) {
+      return String(name || '案件').replace(/[\\\\/:*?"<>|]/g, '_').slice(0, 80);
+    }
+
+    function escapeHtml_(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]));
+    }
+
+    function escapeJs_(value) {
+      return String(value ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-blue-600', 'text-white');
+        btn.classList.add('text-slate-300');
+      });
+      document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+      const activeBtn = document.getElementById(`tab-btn-${tabName}`);
+      activeBtn.classList.add('bg-blue-600', 'text-white');
+      activeBtn.classList.remove('text-slate-300');
+
+      if (tabName === 'subscription') renderSubscriptionTab();
+    }
+
+    function resetManualInputs_(){
+      if(!confirm('②以下で入力・変更した現有数、提案数、備考、オプションセット選択をリセットしますか？')) return;
+      proposalOverrides={}; optionSetCounts={}; selectedSubProductIds=new Set(); subscriptionSetCounts={};
+      calculateAll(); scheduleAutoSave_();
+    }
+
+    // 防災提案計算エンジン（商品マスター連動・現有数差引版）
+    const MASTER_OPTIONS = {
+      status:['有効','候補','保留','停止'],
+      calcType:['人数×日数','人数','人数÷対応人数','固定数','人数×割合','内容量無視','グループ'],
+      priority:['必須','推奨','任意'],
+      unit:['個','食','本','袋','箱','台','張','回','L','kg','セット','式','枚','着','組'],
+      catLarge:['食料・飲料','水・浄水','トイレ・衛生','照明・電源','睡眠・寝具','シェルター・プライバシー','調理・生活','冷暖房・気候対策','救急・安全','情報・通信','運搬・収納']
+    };
+    function n_(v,d=0){const n=Number(String(v??'').replace(/,/g,''));return Number.isFinite(n)?n:d;}
+    function facilityFlag_(p){const x=document.getElementById('input-facility-type')?.value||'business';return x==='home'?!!p.forHome:x==='shelter'?!!p.forShelter:!!p.forBiz;}
+    function parseCapacity_(v){
+      const s=String(v??'').trim().replace(/,/g,'').toLowerCase();
+      const m=s.match(/^([0-9]+(?:\.[0-9]+)?)\s*(ml|l|kg|g|mah|個|本|枚|回|食|袋|箱|台|基|張|式|セット|組|着)?/i);
+      return m ? {value:Number(m[1]), unit:(m[2]||'').toLowerCase()} : {value:0,unit:''};
+    }
+    // 内容量を計算用の単位へ換算（特に水の ml/L を統一）
+    function capacityValue_(v, targetUnit=''){
+      const c=parseCapacity_(v);
+      if(!c.value) return 0;
+      const t=String(targetUnit||'').trim().toLowerCase();
+      const u=c.unit;
+      if(t==='l'){
+        if(u==='ml') return c.value/1000;
+        if(u==='l') return c.value;
+      }
+      if(t==='ml'){
+        if(u==='l') return c.value*1000;
+        if(u==='ml') return c.value;
+      }
+      if(t==='kg'){
+        if(u==='g') return c.value/1000;
+        if(u==='kg') return c.value;
+      }
+      if(t==='g'){
+        if(u==='kg') return c.value*1000;
+        if(u==='g') return c.value;
+      }
+      // 単位指定がない、または個・本など同一単位の場合は数値をそのまま使用
+      return c.value;
+    }
+    function roundMinimum_(qty,min){const q=Math.max(0,n_(qty));const m=Math.max(1,n_(min,1));return q>0?Math.ceil(q/m)*m:0;}
+    function getCalcGroup_(name){return calcGroups.find(g=>String(g.name||'').trim()===String(name||'').trim())||null;}
+    function groupRequiredQty_(g,people,days){
+      if(!g)return 0;
+      if(g.calcType==='人数×日数')return people*days*n_(g.dailyNeed);
+      if(g.calcType==='人数÷対応人数')return n_(g.capPeople)>0?Math.ceil(people/n_(g.capPeople)):0;
+      if(g.calcType==='固定数')return n_(g.minNeed,1);
+      return n_(g.minNeed,0);
+    }
+    function requiredQty_(p,people,days){
+      const ct=p.calcType||'', daily=n_(p.dailyNeed), cap=n_(p.capPeople), c=parseCapacity_(p.capacity);
+      if(ct==='内容量無視') return Math.max(0,n_(p.minNeed,1));
+      if(ct==='人数×日数'){
+        const base=people*days*daily;
+        const cv=capacityValue_(p.capacity, (p.unit==='L' || (p.catLarge||'').includes('水'))?'L':p.unit); return cv>0 ? base/cv : base;
+      }
+      if(ct==='人数'){
+        const base=people*(daily||1);
+        const cv=capacityValue_(p.capacity, (p.unit==='L' || (p.catLarge||'').includes('水'))?'L':p.unit); return cv>0 ? base/cv : base;
+      }
+      if(ct==='人数÷対応人数') return cap>0?Math.ceil(people/cap):0;
+      if(ct==='人数×割合') return Math.ceil(people*(daily||1)/100);
+      if(ct==='固定数') return n_(p.minNeed,1);
+      return daily>0?people*days*daily:(cap>0?Math.ceil(people/cap):0);
+    }
+    function buildMasterCandidates_(people,days,includeSufficient=false){
+      const active=products.filter(p=>(p.status||'有効')==='有効'&&facilityFlag_(p));
+      const groups={};
+      active.forEach(p=>{const g=String(p.calcGroup||'').trim();if(g)(groups[g]??=[]).push(p);});
+      const out=[];
+      Object.entries(groups).forEach(([name,ps])=>{
+        const g=getCalcGroup_(name);
+        // 未登録グループは従来ロジックを維持しつつ、登録済みグループはグループマスターを正として計算
+        if(!g){ ps.forEach(p=>{const req=requiredQty_(p,people,days),stock=0,shortage=Math.max(0,req-stock),min=Math.max(1,n_(p.minimum,1));if(req>0||stock>0)out.push({type:'計算グループ: '+name,group:name,model:p.model,name:p.name,price:n_(p.price),cost:n_(p.cost),requiredQty:req,stock,shortage,minimum:min,qty:roundMinimum_(shortage,min),note:p.note||'',isReducedTax:!!p.isReducedTax,auto:true,product:p});}); return; }
+        const groupNeed=groupRequiredQty_(g,people,days);
+        if(groupNeed<=0)return;
+        const ratioProducts=ps.filter(p=>n_(p.baseRatio)>0);
+        if(g.calcType==='人数×日数' && ratioProducts.length){
+          const cycleVolume=ratioProducts.reduce((sum,p)=>sum+capacityValue_(p.capacity,g.unit)*n_(p.baseRatio),0);
+          const cycles=cycleVolume>0?Math.ceil(groupNeed/cycleVolume):0;
+          ps.forEach(p=>{
+            const ratio=n_(p.baseRatio), req=ratio>0?cycles*ratio:0, stock=0, shortage=Math.max(0,req-stock), min=Math.max(1,n_(p.minimum,1));
+            if(req>0||stock>0)out.push({type:'計算グループ: '+name,group:name,model:p.model,name:p.name,price:n_(p.price),cost:n_(p.cost),requiredQty:req,stock,shortage,minimum:min,qty:roundMinimum_(shortage,min),note:p.note||'',isReducedTax:!!p.isReducedTax,auto:true,product:p});
+          });
+        } else if(g.calcType==='人数÷対応人数') {
+          // 耐久消費財：各商品を単体候補として「対応人数」で必要数を算出。内容量は商品性能の参考値として扱う。
+          ps.forEach(p=>{
+            const cap=n_(p.capPeople)||n_(g.capPeople); const req=cap>0?Math.ceil(people/cap):groupNeed;
+            const stock=0,shortage=Math.max(0,req-stock),min=Math.max(1,n_(p.minimum,1));
+            if(req>0||stock>0)out.push({type:'計算グループ: '+name,group:name,model:p.model,name:p.name,price:n_(p.price),cost:n_(p.cost),requiredQty:req,stock,shortage,minimum:min,qty:roundMinimum_(shortage,min),note:p.note||'',isReducedTax:!!p.isReducedTax,auto:true,product:p});
+          });
+        } else {
+          ps.forEach(p=>{
+            const req=requiredQty_(p,people,days),stock=0,shortage=Math.max(0,req-stock),min=Math.max(1,n_(p.minimum,1));
+            if(req>0||stock>0)out.push({type:'計算グループ: '+name,group:name,model:p.model,name:p.name,price:n_(p.price),cost:n_(p.cost),requiredQty:req,stock,shortage,minimum:min,qty:roundMinimum_(shortage,min),note:p.note||'',isReducedTax:!!p.isReducedTax,auto:true,product:p});
+          });
+        }
+      });
+      active.filter(p=>!String(p.calcGroup||'').trim()).forEach(p=>{
+        const req=requiredQty_(p,people,days); if(req<=0)return;
+        const stock=Math.max(0,n_(p.stock)),shortage=Math.max(0,req-stock),min=Math.max(1,n_(p.minimum,1));
+        out.push({type:'商品マスター計算',group:'',model:p.model,name:p.name,price:n_(p.price),cost:n_(p.cost),requiredQty:req,stock,shortage,minimum:min,qty:roundMinimum_(shortage,min),note:p.note||'',isReducedTax:!!p.isReducedTax,auto:true,product:p});
+      });
+      const rank={必須:0,推奨:1,任意:2};
+      // グループの総目標量を各行へ保持（B画面でグループ全体の必要量を表示するため）
+      out.forEach(x=>{ if(x.group){ const gg=getCalcGroup_(x.group); x.groupRequiredQty=gg?groupRequiredQty_(gg,people,days):x.requiredQty; x.groupUnit=gg?.unit||x.product.unit||''; } });
+      // 防災提案画面で入力した現有数を優先（商品マスターの在庫は初期値として使用）
+      out.forEach(x=>{
+        const o=proposalOverrides[makeProposalOverrideKey_(x)];
+        if(o && o.stock !== undefined){
+          x.stock=Math.max(0,n_(o.stock));
+          x.shortage=Math.max(0,x.requiredQty-x.stock);
+          x.qty=roundMinimum_(x.shortage,x.minimum);
+        }
+      });
+      return (includeSufficient ? out : out.filter(x=>x.shortage>0||proposalOverrides[makeProposalOverrideKey_(x)]?.qty>0)).sort((a,b)=>(rank[a.product.priority]??9)-(rank[b.product.priority]??9)||b.shortage-a.shortage);
+    }
+    function renderBStockCalcTable_(people,days){
+      const tbody=document.getElementById('b-stock-calc-rows'); if(!tbody)return;
+      tbody.innerHTML='';
+      const all=buildMasterCandidates_(people,days,true);
+      const order=new Map(products.map((p,i)=>[makeProductStableKey_(p),i]));
+      all.sort((a,b)=>(order.get(makeProductStableKey_(a.product))??999999)-(order.get(makeProductStableKey_(b.product))??999999));
+      if(!all.length){tbody.innerHTML='<tr><td colspan="7" class="py-6 text-center text-slate-400">現在の条件で対象となる有効商品はありません。</td></tr>';return;}
+      const groupAllocated={};
+      all.forEach(item=>{
+        const key=makeProposalOverrideKey_(item),o=proposalOverrides[key]||{};
+        const q=o.qty!==undefined?n_(o.qty):n_(item.qty);
+        if(item.group)groupAllocated[item.group]=(groupAllocated[item.group]||0)+Math.max(0,q);
+      });
+      all.forEach(item=>{
+        const key=makeProposalOverrideKey_(item),o=proposalOverrides[key]||{};
+        const stock=o.stock!==undefined?n_(o.stock):0;
+        const hasManual=o.qty!==undefined;
+        const proposal=hasManual?n_(o.qty):n_(item.qty);
+        const allocation=Math.max(0,proposal);
+        const groupAlloc=item.group?n_(groupAllocated[item.group]):allocation;
+        const shortage=item.group?Math.max(0,n_(item.requiredQty)-stock-groupAlloc):Math.max(0,n_(item.requiredQty)-stock-allocation);
+        const target=n_(item.requiredQty),unit=escapeHtml_(item.product.unit||item.groupUnit||'');
+        const groupTotal=item.groupRequiredQty!==undefined&&item.groupRequiredQty!==target?`<div class="text-[10px] font-normal text-slate-400">グループ全体 ${n_(item.groupRequiredQty).toLocaleString()} ${escapeHtml_(item.groupUnit||'')}</div>`:'';
+        const tr=document.createElement('tr');
+        tr.innerHTML=`<td class="py-2.5 px-3 font-semibold">${escapeHtml_(item.group||item.type)}</td>
+          <td class="py-2.5 px-3 text-right font-bold">${target.toLocaleString()} ${unit}${groupTotal}</td>
+          <td class="py-2.5 px-3">[${escapeHtml_(item.model||'-')}] ${escapeHtml_(item.name)} <span class="text-xs text-slate-500">${item.isReducedTax?'8%':'10%'}</span></td>
+          <td class="py-2.5 px-3 text-right"><input type="number" min="0" value="${stock}" onchange="updateBStockByKey_('${escapeJs_(key)}',this.value)" class="w-24 text-right cell-manual rounded p-1" title="お客様の現有数"></td>
+          <td class="py-2.5 px-3 text-right font-bold"><input type="number" min="0" value="${proposal}" onchange="updateBProposalQtyByKey_('${escapeJs_(key)}',this.value)" class="w-24 text-right cell-manual rounded p-1 font-bold ${hasManual?'ring-2 ring-blue-300 bg-blue-50':''}" title="営業マンが確定・調整する提案数"></td>
+          <td class="py-2.5 px-3 text-right font-bold text-blue-700">${allocation.toLocaleString()} ${unit}</td>
+          <td class="py-2.5 px-3 text-right font-bold ${shortage>0?'text-rose-700':'text-emerald-700'}">${shortage.toLocaleString()} ${unit}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function updateBStockByKey_(key,val){
+      const people=Math.max(1,parseInt(document.getElementById('input-people').value)||1);
+      const days=Math.max(1,parseInt(document.getElementById('input-days').value)||1);
+      const all=buildMasterCandidates_(people,days,true);
+      const item=all.find(x=>makeProposalOverrideKey_(x)===key);
+      if(!item)return;
+      proposalOverrides[key]=proposalOverrides[key]||{};
+      proposalOverrides[key].stock=Math.max(0,n_(val));
+      // 営業マンがまだ提案数を手修正していない場合だけ、不足数から自動再計算する。
+      // 手修正済みの提案数は、現有数を変更しても保持する。
+      if(proposalOverrides[key].qty === undefined){
+        delete proposalOverrides[key].qty;
+      }
+      calculateAll();
+      scheduleAutoSave_();
+    }
+
+    function updateBProposalQtyByKey_(key,val){
+      const q=Math.max(0,parseInt(val)||0);
+      proposalOverrides[key]=proposalOverrides[key]||{};
+      proposalOverrides[key].qty=q;
+      calculateAll();
+      scheduleAutoSave_();
+    }
+
+    function calculateAll(){
+      const people=Math.max(1,parseInt(document.getElementById('input-people').value)||1),days=Math.max(1,parseInt(document.getElementById('input-days').value)||1);
+      document.getElementById('display-total-meals').innerText=`${(people*days*3).toLocaleString()} 食`;
+      currentCalculatedProposal=buildMasterCandidates_(people,days);
+      renderBStockCalcTable_(people,days);
+      renderStandardSetSelectors(people);
+      standardSets.filter(s=>s.active).forEach(set=>{
+        const setCount=getOptionSetCount_(set,people);
+        if(setCount<=0)return;
+        const unitPrice=getOptionSetUnitPrice_(set);
+        const items=standardSetItems.filter(i=>i.setId===set.id);
+        const firstProd=items.map(i=>products.find(p=>p.model===i.productId||p.name===i.productId)).find(Boolean);
+        const reduced=items.length>0 && items.every(i=>{const prod=products.find(p=>p.model===i.productId||p.name===i.productId);return prod&&!!prod.isReducedTax;});
+        currentCalculatedProposal.push({
+          type:'オプションセット', group:'', model:set.id, name:set.name, price:unitPrice, cost:items.reduce((sum,i)=>{const prod=products.find(p=>p.model===i.productId||p.name===i.productId);return sum+(prod?n_(prod.cost)*n_(i.qty,1):0);},0),
+          requiredQty:setCount, stock:0, shortage:0, minimum:1, qty:setCount,
+          note:set.note||'', isReducedTax:reduced, auto:true, isOptionSet:true, optionSetId:set.id, optionSet:set, product:firstProd
+        });
+      });
+      currentCalculatedProposal.forEach(i=>{const o=proposalOverrides[makeProposalOverrideKey_(i)];if(o?.qty!==undefined){i.qty=Math.max(0,parseInt(o.qty)||0);i.auto=false;}if(o?.note!==undefined)i.note=o.note;i.totalPrice=i.qty*i.price;});
+      renderProposalSummaryTable();
+    }
+
+    function makeProductStableKey_(p){ return String(p?.model||'')+'|||'+String(p?.name||''); }
+
+    function makeProposalOverrideKey_(item) {
+      return [item.type || '', item.model || '', item.name || ''].join('|||');
+    }
+
+    function getOptionSetUnitPrice_(set){
+      const configured=Number(set?.price);
+      if(Number.isFinite(configured) && configured>0) return configured;
+      return getOptionSetListPrice_(set);
+    }
+    function getOptionSetCount_(set,people){
+      if(set.unitType==='人数×割合') return Math.ceil(people*((set.ratio||0)/100));
+      return Math.max(0,n_(optionSetCounts[set.id],0));
+    }
+    function updateOptionSetCount_(setId,val){
+      optionSetCounts[setId]=Math.max(0,parseInt(val)||0);
+      calculateAll();
+      scheduleAutoSave_();
+    }
+
+    function renderStandardSetSelectors(people) {
+      const grid = document.getElementById('standard-sets-selector-grid');
+      grid.innerHTML = '';
+      standardSets.forEach(set => {
+        const ratioLinked=set.unitType==='人数×割合';
+        const count=getOptionSetCount_(set,people);
+        const unitPrice=getOptionSetUnitPrice_(set);
+        const card = document.createElement('div');
+        card.className = `p-4 rounded-xl border transition ${set.active ? 'bg-blue-50/60 border-blue-400' : 'bg-slate-50 border-slate-200'}`;
+        card.innerHTML = `
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">${escapeHtml_(set.category)}</span>
+            <input type="checkbox" ${set.active ? 'checked' : ''} onchange="toggleSetActive('${escapeJs_(set.id)}')" class="w-4 h-4 text-blue-600">
+          </div>
+          <h4 class="font-bold text-sm">${escapeHtml_(set.name)}</h4>
+          <p class="text-xs text-slate-500 mt-1">${ratioLinked ? `人数連動：${n_(set.ratio)}%` : '案件ごとに個数指定'}</p>
+          <div class="mt-3 flex items-center justify-between gap-3">
+            <div class="text-xs text-slate-600">1個：<b>¥${unitPrice.toLocaleString()}</b></div>
+            ${ratioLinked
+              ? `<div class="text-sm font-bold text-blue-700">${count.toLocaleString()} 個</div>`
+              : `<label class="text-xs font-semibold text-slate-600 flex items-center gap-2">個数<input type="number" min="0" value="${count}" onchange="updateOptionSetCount_('${escapeJs_(set.id)}',this.value)" class="w-20 text-right cell-manual rounded p-1 font-bold"></label>`}
+          </div>
+          ${set.note ? `<p class="text-[11px] text-slate-500 mt-2">${escapeHtml_(set.note)}</p>` : ''}`;
+        grid.appendChild(card);
+      });
+    }
+
+    function toggleSetActive(setId) {
+      const set = standardSets.find(s => s.id === setId);
+      if (set) { set.active = !set.active; calculateAll(); scheduleAutoSave_(); }
+    }
+
+    // 提案商品総合明細テーブル（手動提案数書き込み＆備考編集対応）
+    function renderProposalSummaryTable(){
+      const tbody=document.getElementById('proposal-summary-rows'); tbody.innerHTML=''; let total=0;
+      currentCalculatedProposal.forEach((item,idx)=>{
+        total+=item.qty*item.price; const id=item.isOptionSet ? ('SET:'+item.optionSetId) : (item.model||item.name);
+        const tr=document.createElement('tr'); tr.className='hover:bg-slate-50';
+        tr.innerHTML=`<td class="py-2.5 px-3"><span class="text-xs px-2 py-0.5 rounded bg-slate-100">${escapeHtml_(item.type)}</span></td>
+          <td class="py-2.5 px-3 font-semibold">[${escapeHtml_(item.model||'-')}] ${escapeHtml_(item.name)}</td>
+          <td class="py-2.5 px-3 text-center">${item.isReducedTax?'8%':'10%'}</td>
+          <td class="py-2.5 px-3 text-right">¥${n_(item.price).toLocaleString()}</td>
+          <td class="py-2.5 px-3 text-right"><input type="number" min="0" value="${n_(item.qty)}" onchange="updateProposalQty(${idx},this.value)" class="w-20 text-right font-bold cell-manual rounded p-1"></td>
+          <td class="py-2.5 px-3 text-right font-bold">¥${(n_(item.qty)*n_(item.price)).toLocaleString()}</td>
+          <td class="py-2.5 px-3"><input type="text" value="${escapeHtml_(item.note||'')}" onchange="updateProposalNote(${idx},this.value)" class="w-full cell-manual text-xs rounded p-1"></td>`;
+        tbody.appendChild(tr);
+      });
+      document.getElementById('summary-total-price').innerText=`¥${total.toLocaleString()}`;
+    }
+    function updateProposalStock(idx,val){
+      const i=currentCalculatedProposal[idx];if(!i)return;
+      i.stock=Math.max(0,n_(val));i.shortage=Math.max(0,i.requiredQty-i.stock);i.qty=i.shortage?Math.ceil(i.shortage/Math.max(1,i.minimum))*Math.max(1,i.minimum):0;i.auto=true;i.totalPrice=i.qty*i.price;
+      const k=makeProposalOverrideKey_(i);if(proposalOverrides[k])delete proposalOverrides[k].qty;
+      renderProposalSummaryTable();scheduleAutoSave_();
+    }
+
+    function updateProposalQty(idx, val) {
+      const q = Math.max(0, parseInt(val) || 0);
+      currentCalculatedProposal[idx].qty = q;
+      currentCalculatedProposal[idx].auto = false;
+      currentCalculatedProposal[idx].totalPrice = q * currentCalculatedProposal[idx].price;
+      const key = makeProposalOverrideKey_(currentCalculatedProposal[idx]);
+      proposalOverrides[key] = proposalOverrides[key] || {};
+      proposalOverrides[key].qty = q;
+      proposalOverrides[key].note = currentCalculatedProposal[idx].note || '';
+      renderProposalSummaryTable();
+      scheduleAutoSave_();
+    }
+
+    function updateProposalNote(idx, val) {
+      currentCalculatedProposal[idx].note = val;
+      const key = makeProposalOverrideKey_(currentCalculatedProposal[idx]);
+      proposalOverrides[key] = proposalOverrides[key] || {};
+      proposalOverrides[key].qty = currentCalculatedProposal[idx].qty;
+      proposalOverrides[key].note = val;
+      scheduleAutoSave_();
+    }
+
+    function toggleSubSelection(idKey) {
+      if (selectedSubProductIds.has(idKey)) selectedSubProductIds.delete(idKey);
+      else selectedSubProductIds.add(idKey);
+    }
+
+    function goToSubscriptionWithSelected() {
+      currentCalculatedProposal.forEach(item => selectedSubProductIds.add(item.model || item.name));
+      switchTab('subscription');
+    }
+
+    // サブスク＆サービス設計シミュレーター
+    function renderSubscriptionTab(){
+      const list=document.getElementById('sub-item-selection-list'); if(!list)return; list.innerHTML='';
+      standardSets.filter(s=>s.active!==false).forEach(set=>{const q=getSubscriptionSetCount_(set.id),cost=getOptionSetCost_(set),price=getOptionSetUnitPrice_(set); const d=document.createElement('div'); d.className='p-3 rounded-lg border border-slate-200 bg-slate-50'; d.innerHTML=`<div class="flex items-center justify-between gap-2"><label class="flex items-center gap-2 cursor-pointer font-semibold text-xs"><input type="checkbox" ${q>0?'checked':''} onchange="toggleSubscriptionSet_('${escapeJs_(set.id)}',this.checked)" class="w-4 h-4">${escapeHtml_(set.name)}</label><span class="text-xs text-slate-500">下代 ¥${cost.toLocaleString()} / 上代 ¥${price.toLocaleString()}</span></div><div class="mt-2 flex items-center justify-between text-xs"><span class="text-slate-500">月間セット数</span><input type="number" min="0" value="${q}" onchange="updateSubscriptionSetCount_('${escapeJs_(set.id)}',this.value)" class="w-24 text-right cell-manual rounded p-1 font-bold"></div>`; list.appendChild(d);});
+      runSubscriptionSimulation();
+    }
+    function getSubscriptionSetCount_(id){return Math.max(0,parseInt((subscriptionSetCounts||{})[id])||0)}
+    function toggleSubscriptionSet_(id,on){subscriptionSetCounts=subscriptionSetCounts||{};subscriptionSetCounts[id]=on?Math.max(1,getSubscriptionSetCount_(id)):0;runSubscriptionSimulation();scheduleAutoSave_()}
+    function updateSubscriptionSetCount_(id,val){subscriptionSetCounts=subscriptionSetCounts||{};subscriptionSetCounts[id]=Math.max(0,parseInt(val)||0);runSubscriptionSimulation();scheduleAutoSave_()}
+    function selectAllSubscriptionItems(status){subscriptionSetCounts=subscriptionSetCounts||{};standardSets.forEach(s=>subscriptionSetCounts[s.id]=status?Math.max(1,getSubscriptionSetCount_(s.id)):0);renderSubscriptionTab()}
+    function runSubscriptionSimulation(){
+      subscriptionSetCounts=subscriptionSetCounts||{}; let initialCost=0; standardSets.forEach(set=>{const q=getSubscriptionSetCount_(set.id);if(q>0)initialCost+=getOptionSetCost_(set)*q});
+      const monthlyFee=Math.max(0,parseFloat(document.getElementById('sub-monthly-fee-input')?.value)||0), initFee=Math.max(0,parseFloat(document.getElementById('sub-init-fee')?.value)||0), months=Math.max(1,parseInt(document.getElementById('sub-analysis-months')?.value)||120), cycle=Math.max(1,parseInt(document.getElementById('sub-replace-cycle')?.value)||60);
+      const replacementCount=Math.ceil(months/cycle), totalCost=initialCost*replacementCount, totalRevenue=initFee+monthlyFee*months, profit=totalRevenue-totalCost, margin=totalRevenue?profit/totalRevenue*100:0, breakEven=monthlyFee>0&&Math.ceil(Math.max(0,totalCost-initFee)/monthlyFee)<=months?`${Math.ceil(Math.max(0,totalCost-initFee)/monthlyFee)}ヶ月目`:'—';
+      const cm=Math.max(1,parseInt(document.getElementById('test-cancel-month')?.value)||1),p1=Math.max(0,parseInt(document.getElementById('penalty-tier1')?.value)||0),p2=Math.max(0,parseInt(document.getElementById('penalty-tier2')?.value)||0),penalty=cm<=12?0:(cm<=24?p1:p2),cancelRevenue=initFee+monthlyFee*cm+penalty,cancelCost=initialCost*Math.ceil(cm/cycle),cancelProfit=cancelRevenue-cancelCost;
+      document.getElementById('sub-selected-total-price').innerText=`¥${initialCost.toLocaleString()}`; document.getElementById('metric-monthly-fee').innerText=`¥${monthlyFee.toLocaleString()}`; document.getElementById('metric-total-sub-pay').innerText=`¥${totalRevenue.toLocaleString()}`; document.getElementById('metric-total-cost').innerText=`¥${totalCost.toLocaleString()}`; document.getElementById('metric-profit-margin').innerText=`${margin.toFixed(1)}%`; document.getElementById('metric-replacement-cost').innerText=`¥${initialCost.toLocaleString()}`; document.getElementById('metric-replacement-count').innerText=`${replacementCount}回`; document.getElementById('metric-break-even').innerText=breakEven; document.getElementById('display-penalty-amount').innerText=cm<=12?'解約不可':`¥${penalty.toLocaleString()}（解約時損益 ¥${cancelProfit.toLocaleString()}）`;
+      subscriptionSimulation={initialCost,monthlyFee,initFee,months,cycle,replacementCount,totalCost,totalRevenue,profit,margin,breakEven,penalty,cm,cancelProfit}; renderComparisonChart(months,monthlyFee,initFee,cycle,initialCost);
+    }
+    function renderComparisonChart(months,monthlyFee,initFee,cycle,initialCost){const el=document.getElementById('subComparisonChart');if(!el||typeof window.Chart!=='function')return;if(subChartInstance)subChartInstance.destroy();const labels=Array.from({length:months+1},(_,i)=>`${i}ヶ月`),rev=[],cost=[];for(let i=0;i<=months;i++){rev.push(initFee+monthlyFee*i);cost.push(i===0?0:Math.ceil(i/cycle)*initialCost)}subChartInstance=new Chart(el.getContext('2d'),{type:'line',data:{labels,datasets:[{label:'累計売上',data:rev},{label:'累計原価',data:cost}]},options:{responsive:true,maintainAspectRatio:false}})}
+
+    // 見積書出力＆消費税・自社情報計算
+    function openQuoteModal(type) {
+      const modal = document.getElementById('quote-modal');
+      const docTitle = document.getElementById('quote-doc-title');
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('ja-JP');
+      document.getElementById('quote-date').innerText = dateStr;
+      document.getElementById('quote-number').innerText = (currentCaseId || 'DRAFT') + '-' + now.getTime().toString().slice(-6);
+      const tbody = document.getElementById('quote-table-body');
+      tbody.innerHTML = '';
+
+      readCompanyInfoFromForm_();
+      const comp = getQuoteCompanyInfo_();
+      const recipient = collectQuoteRecipient_();
+      document.getElementById('q-disp-comp-name').innerText = [comp.name, comp.dept, comp.contact].filter(Boolean).join(' ');
+      document.getElementById('q-disp-comp-tnum').innerText = comp.tNum ? `登録番号: ${comp.tNum}` : '';
+      document.getElementById('q-disp-comp-addr').innerText = [comp.postal, comp.address].filter(Boolean).join(' ');
+      document.getElementById('q-disp-comp-tel').innerText = [comp.tel ? `TEL: ${comp.tel}` : '', comp.fax ? `FAX: ${comp.fax}` : ''].filter(Boolean).join(' / ');
+      document.getElementById('quote-client-name').innerText = recipient.name ? `${recipient.name} / 御中` : '◯◯株式会社 / 御中';
+      document.getElementById('quote-client-dept').innerText = recipient.dept || '';
+      document.getElementById('quote-client-person').innerText = recipient.person || '';
+      document.getElementById('quote-client-address').innerText = [recipient.postal, recipient.address].filter(Boolean).join(' ');
+      document.getElementById('quote-client-tel').innerText = recipient.tel ? `TEL: ${recipient.tel}` : '';
+      document.getElementById('quote-subject-display').innerText = recipient.subject || '防災備蓄品及び避難設備導入提案の件';
+
+      const normRate = parseFloat(comp.normalTax) || 10;
+      const redRate = parseFloat(comp.reducedTax) || 8;
+      document.getElementById('q-rate-norm-label').innerText = normRate;
+      document.getElementById('q-rate-red-label').innerText = redRate;
+      document.getElementById('quote-valid-days-display').innerText = comp.validDays || 30;
+      document.getElementById('quote-company-note-display').innerText = comp.quoteNote || '';
+
+      let subtotalNorm = 0;
+      let subtotalRed = 0;
+
+      if (type === 'purchase') {
+        docTitle.innerText = '御 見 積 書 (買い切り)';
+        document.getElementById('quote-sub-conditions').classList.add('hidden');
+
+        currentCalculatedProposal.filter(item=>n_(item.qty)>0).forEach((item, i) => {
+          if (item.isReducedTax) subtotalRed += item.totalPrice;
+          else subtotalNorm += item.totalPrice;
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="py-2 px-3">${i + 1}</td>
+            <td class="py-2 px-3 font-medium">${item.isOptionSet ? `オプションセット：${item.name}` : `[${item.model}] ${item.name}`}</td>
+            <td class="py-2 px-3 text-right">¥${item.price.toLocaleString()}</td>
+            <td class="py-2 px-3 text-right">${item.qty.toLocaleString()}</td>
+            <td class="py-2 px-3 text-right font-bold">¥${(item.qty*item.price).toLocaleString()}</td>
+            <td class="py-2 px-3 text-slate-500">${item.note || ''}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+      } else {
+        docTitle.innerText = '御 見 積 書 (サブスクリプション)';
+        document.getElementById('quote-sub-conditions').classList.remove('hidden');
+
+        const pTier1 = parseInt(document.getElementById('penalty-tier1').value) || 0;
+        const pTier2 = parseInt(document.getElementById('penalty-tier2').value) || 0;
+        document.getElementById('q-pen-t1').innerText = `¥${pTier1.toLocaleString()}`;
+        document.getElementById('q-pen-t2').innerText = `¥${pTier2.toLocaleString()}`;
+
+        const selectedItems = standardSets.filter(set=>getSubscriptionSetCount_(set.id)>0).map(set=>({isOptionSet:true,optionSetId:set.id,name:set.name,model:'',type:'オプションセット',price:getOptionSetUnitPrice_(set),qty:getSubscriptionSetCount_(set.id),totalPrice:getOptionSetUnitPrice_(set)*getSubscriptionSetCount_(set.id),isReducedTax:false,note:'サブスク対象'}));
+        selectedItems.forEach((item, i) => {
+          if (item.isReducedTax) subtotalRed += item.totalPrice;
+          else subtotalNorm += item.totalPrice;
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td class="py-2 px-3">${i + 1}</td>
+            <td class="py-2 px-3 font-medium">${item.isOptionSet ? `オプションセット：${item.name}` : `[${item.model}] ${item.name}`}</td>
+            <td class="py-2 px-3 text-right">¥${item.price.toLocaleString()}</td>
+            <td class="py-2 px-3 text-right">${item.qty.toLocaleString()}</td>
+            <td class="py-2 px-3 text-right font-bold">¥${(item.qty*item.price).toLocaleString()}</td>
+            <td class="py-2 px-3 text-slate-500">サブスク対象</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        const monthlyFee = Math.max(0, Number(document.getElementById('sub-monthly-fee-input')?.value)||0);
+        const initFee = Math.max(0, Number(document.getElementById('sub-init-fee')?.value)||0);
+        document.getElementById('quote-sub-monthly').innerText = `¥${monthlyFee.toLocaleString()}`;
+        document.getElementById('quote-sub-init').innerText = `¥${initFee.toLocaleString()}`;
+      }
+
+      const taxNorm = Math.floor(subtotalNorm * (normRate / 100));
+      const taxRed = Math.floor(subtotalRed * (redRate / 100));
+      const grandTotalWithTax = subtotalNorm + subtotalRed + taxNorm + taxRed;
+
+      document.getElementById('quote-subtotal-display').innerText = `¥${(subtotalNorm+subtotalRed).toLocaleString()}`;
+      document.getElementById('q-sub-norm').innerText = subtotalNorm.toLocaleString();
+      document.getElementById('q-tax-norm').innerText = taxNorm.toLocaleString();
+      document.getElementById('q-sub-red').innerText = subtotalRed.toLocaleString();
+      document.getElementById('q-tax-red').innerText = taxRed.toLocaleString();
+      document.getElementById('quote-grand-total').innerText = `¥${grandTotalWithTax.toLocaleString()}- (税込)`;
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeQuoteModal() { document.getElementById('quote-modal').classList.add('hidden'); }
+
+    // マスタ管理 & モーダル機能
+    function renderMasterTables() {
+      // 商品マスター
+      const pBody = document.getElementById('product-master-rows');
+      pBody.innerHTML = '';
+      products.forEach((p, idx) => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50';
+        tr.innerHTML = `
+          <td class="py-2 px-2"><span class="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">${p.status || '有効'}</span></td>
+          <td class="py-2 px-2 font-mono font-bold">${p.model || '-'}</td>
+          <td class="py-2 px-2 font-semibold">${p.name}</td>
+          <td class="py-2 px-2">${p.supplier || '-'}</td>
+          <td class="py-2 px-2">${p.catLarge || '-'}</td>
+          <td class="py-2 px-2 text-right font-bold">¥${p.price.toLocaleString()}</td>
+          <td class="py-2 px-2 text-right">¥${(p.cost || 0).toLocaleString()}</td>
+          <td class="py-2 px-2 text-center">${p.isReducedTax ? '<span class="bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">8%対象</span>' : '10%'}</td>
+          <td class="py-2 px-2 text-center whitespace-nowrap">
+            <button onclick="moveProduct(${idx},-1)" ${idx===0?'disabled':''} class="px-1 text-slate-500 hover:text-blue-600 disabled:opacity-20" title="上へ"><i data-lucide="chevron-up" class="w-4 h-4"></i></button>
+            <button onclick="moveProduct(${idx},1)" ${idx===products.length-1?'disabled':''} class="px-1 text-slate-500 hover:text-blue-600 disabled:opacity-20" title="下へ"><i data-lucide="chevron-down" class="w-4 h-4"></i></button>
+          </td>
+          <td class="py-2 px-2 text-center space-x-1">
+            <button onclick="openProductEditModal(${idx})" class="text-blue-600 hover:text-blue-800"><i data-lucide="edit" class="w-4 h-4"></i></button>
+            <button onclick="deleteProduct(${idx})" class="text-rose-600 hover:text-rose-800"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+          </td>
+        `;
+        pBody.appendChild(tr);
+      });
+
+      // 計算グループマスター
+      const gBody=document.getElementById('calc-group-master-rows');
+      if(gBody){
+        gBody.innerHTML='';
+        if(!calcGroups.length){
+          gBody.innerHTML='<tr><td colspan="9" class="py-6 text-center text-slate-400">計算グループが登録されていません。「新規計算グループ追加」から作成してください。</td></tr>';
+        } else {
+          calcGroups.forEach((g,idx)=>{
+            const tr=document.createElement('tr'); tr.className='hover:bg-slate-50';
+            tr.innerHTML=`
+              <td class="py-2 px-2"><input type="text" value="${escapeHtml_(g.name||'')}" onchange="updateCalcGroup_(${idx},'name',this.value)" class="cell-input rounded p-1 w-36 font-semibold"></td>
+              <td class="py-2 px-2"><select onchange="updateCalcGroup_(${idx},'unit',this.value)" class="cell-input rounded p-1 w-20">${MASTER_OPTIONS.unit.map(u=>`<option value="${escapeHtml_(u)}" ${g.unit===u?'selected':''}>${escapeHtml_(u)}</option>`).join('')}</select></td>
+              <td class="py-2 px-2"><select onchange="updateCalcGroup_(${idx},'calcType',this.value)" class="cell-input rounded p-1 w-32">${MASTER_OPTIONS.calcType.map(t=>`<option value="${escapeHtml_(t)}" ${g.calcType===t?'selected':''}>${escapeHtml_(t)}</option>`).join('')}</select></td>
+              <td class="py-2 px-2"><input type="number" min="0" step="0.01" value="${n_(g.dailyNeed)}" onchange="updateCalcGroup_(${idx},'dailyNeed',this.value)" class="cell-input rounded p-1 w-24 text-right"></td>
+              <td class="py-2 px-2"><input type="number" min="0" value="${n_(g.capPeople)}" onchange="updateCalcGroup_(${idx},'capPeople',this.value)" class="cell-input rounded p-1 w-20 text-right"></td>
+              <td class="py-2 px-2"><input type="number" min="0" value="${n_(g.minNeed)}" onchange="updateCalcGroup_(${idx},'minNeed',this.value)" class="cell-input rounded p-1 w-20 text-right"></td>
+              <td class="py-2 px-2"><input type="text" value="${escapeHtml_(g.standard||'')}" onchange="updateCalcGroup_(${idx},'standard',this.value)" class="cell-input rounded p-1 w-44"></td>
+              <td class="py-2 px-2"><input type="text" value="${escapeHtml_(g.note||'')}" onchange="updateCalcGroup_(${idx},'note',this.value)" class="cell-input rounded p-1 w-48"></td>
+              <td class="py-2 px-2 text-center"><button onclick="deleteCalcGroup_(${idx})" class="text-rose-600 hover:text-rose-800"><i data-lucide="trash-2" class="w-4 h-4"></i></button></td>`;
+            gBody.appendChild(tr);
+          });
+        }
+      }
+
+    // オプションセットマスター（旧標準セット）
+      const sBody = document.getElementById('standard-set-master-rows');
+      sBody.innerHTML = '';
+      standardSets.forEach((s, idx) => {
+        const itemCount = standardSetItems.filter(i => i.setId === s.id).length;
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50';
+        tr.innerHTML = `
+          <td class="py-2.5 px-2 font-mono font-bold">${s.id}</td>
+          <td class="py-2.5 px-2 font-semibold">
+            <input type="text" value="${s.name}" onchange="standardSets[${idx}].name=this.value; calculateAll();" class="cell-input rounded p-1 w-full text-xs">
+          </td>
+          <td class="py-2.5 px-2">
+            <select onchange="standardSets[${idx}].category=this.value; calculateAll();" class="cell-input rounded p-1 text-xs">
+              <option value="A:非常持ち出しパック" ${s.category.startsWith('A') ? 'selected' : ''}>A:非常持ち出しパック</option>
+              <option value="C:避難所設備" ${s.category.startsWith('C') ? 'selected' : ''}>C:避難所設備</option>
+            </select>
+          </td>
+          <td class="py-2.5 px-2">
+            <select onchange="standardSets[${idx}].unitType=this.value; calculateAll();" class="cell-input rounded p-1 text-xs">
+              <option value="人数" ${s.unitType==='人数'?'selected':''}>人数</option>
+              <option value="人数×割合" ${s.unitType==='人数×割合'?'selected':''}>人数×割合</option>
+              <option value="人数÷対応人数" ${s.unitType==='人数÷対応人数'?'selected':''}>人数÷対応人数</option>
+              <option value="固定数" ${s.unitType==='固定数'?'selected':''}>固定数</option>
+            </select>
+          </td>
+          <td class="py-2.5 px-2">
+            <input type="number" value="${s.ratio || s.capacity || s.fixedCount || 1}" onchange="updateSetParam(${idx}, this.value)" class="cell-input rounded p-1 w-16 text-right font-bold">
+          </td>
+          <td class="py-2.5 px-2 font-bold">${itemCount} 個</td>
+          <td class="py-2.5 px-2 text-right font-bold">¥${getOptionSetListPrice_(s).toLocaleString()}</td>
+          <td class="py-2.5 px-2 text-right font-bold">¥${getOptionSetCost_(s).toLocaleString()}</td>
+          <td class="py-2.5 px-2 text-right font-bold ${getOptionSetMargin_(s) < 0 ? 'text-rose-700' : 'text-teal-700'}">${getOptionSetMargin_(s).toFixed(1)}%</td>
+          <td class="py-2.5 px-2 text-center">
+            <button onclick="openSetItemsEditor('${s.id}')" class="bg-teal-600 hover:bg-teal-700 text-white px-2 py-1 rounded text-xs">構成編集</button>
+          </td>
+          <td class="py-2.5 px-2 text-center">
+            <button onclick="deleteStandardSet(${idx})" class="text-rose-600 hover:text-rose-800"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+          </td>
+        `;
+        sBody.appendChild(tr);
+      });
+
+      if (window.lucide && typeof window.lucide.createIcons === 'function') { window.lucide.createIcons(); }
+    }
+
+    function updateSetParam(idx, val) {
+      const v = parseInt(val) || 1;
+      const s = standardSets[idx];
+      if (s.unitType === '人数×割合') s.ratio = v;
+      else if (s.unitType === '人数÷対応人数') s.capacity = v;
+      else if (s.unitType === '固定数') s.fixedCount = v;
+      saveMasterSettings_(); calculateAll();
+    }
+
+    function deleteProduct(idx) {
+      if (confirm('この商品を削除しますか？')) {
+        products.splice(idx, 1);
+        saveMasterSettings_(); renderMasterTables(); calculateAll();
+      }
+    }
+
+    function deleteStandardSet(idx) {
+      if (confirm('このオプションセットを削除しますか？')) {
+        standardSets.splice(idx, 1);
+        saveMasterSettings_(); renderMasterTables(); calculateAll();
+      }
+    }
+
+    function addNewStandardSetDef() {
+      const newId = `S${String(standardSets.length + 1).padStart(3, '0')}`;
+      standardSets.push({ id: newId, name: '新規オプションセット', category: 'A:非常持ち出しパック', unitType: '人数', capacity: null, ratio: null, fixedCount: null, note: '', active: false });
+      saveMasterSettings_(); renderMasterTables(); calculateAll();
+    }
+
+    function updateCalcGroup_(idx,key,val){
+      const g=calcGroups[idx]; if(!g)return;
+      if(key==='name'){
+        const name=String(val||'').trim();
+        if(!name){alert('計算グループ名は必須です。');renderMasterTables();return;}
+        if(calcGroups.some((x,i)=>i!==idx&&String(x.name||'').trim()===name)){alert('同名の計算グループがあります。');renderMasterTables();return;}
+        const old=g.name; g.name=name;
+        products.forEach(p=>{if(String(p.calcGroup||'').trim()===String(old||'').trim())p.calcGroup=name;});
+      } else if(['dailyNeed','capPeople','minNeed'].includes(key)){ g[key]=Math.max(0,n_(val)); }
+      else g[key]=val;
+      saveMasterSettings_(); renderMasterTables(); calculateAll();
+    }
+
+    function addNewCalcGroup_(){
+      let base='新規グループ',name=base,i=1; while(calcGroups.some(g=>g.name===name))name=base+i++;
+      calcGroups.push({name,unit:'個',calcType:'人数×日数',dailyNeed:1,capPeople:0,minNeed:0,standard:'',note:''}); saveMasterSettings_(); renderMasterTables(); calculateAll();
+    }
+    function deleteCalcGroup_(idx){
+      const g=calcGroups[idx]; if(!g)return;
+      if(products.some(p=>String(p.calcGroup||'').trim()===g.name)){alert('この計算グループを使用している商品があります。先に商品マスター側で「グループなし」または別グループへ変更してください。');return;}
+      if(confirm(`計算グループ「${g.name}」を削除しますか？`)){calcGroups.splice(idx,1);saveMasterSettings_();renderMasterTables();calculateAll();}
+    }
+
+
+    function productValidation_(p){const e=[];if(!p.name?.trim())e.push('商品名');if(!p.status)e.push('商品ステータス');if(!(p.forBiz||p.forHome||p.forShelter))e.push('対象区分');if(!p.catLarge)e.push('大カテゴリ');if(!p.catSmall)e.push('小カテゴリ');if(!p.calcType)e.push('計算タイプ');if(!p.unit)e.push('単位');if(n_(p.minimum)<=0)e.push('ミニマム');if(n_(p.price)<=0)e.push('上代');if(p.calcGroup&&n_(p.baseRatio)<=0)e.push('基本構成比');if(!p.calcGroup&&p.calcType==='人数×日数'&&n_(p.dailyNeed)<=0)e.push('1日必要数');if(!p.calcGroup&&p.calcType==='人数÷対応人数'&&n_(p.capPeople)<=0)e.push('対応人数');if(p.calcGroup&&p.calcType!=='グループ')e.push('計算タイプは「グループ」');return e;}
+    function fillSelect_(id,arr,val){const el=document.getElementById(id);if(!el)return;el.innerHTML='<option value="">-- 選択 --</option>'+arr.map(x=>`<option value="${escapeHtml_(x)}">${escapeHtml_(x)}</option>`).join('');if(val!==undefined)el.value=val;}
+    const CATEGORY_MAP = {
+      '食料・飲料': {
+        '非常食':['非常食','食事','水不要','カトラリー付き'], 'パン・クラッカー':['非常食','食事'], '缶詰・レトルト':['非常食','食事'], '栄養補助食品':['栄養補給'], '菓子・嗜好品':['嗜好品','ストレス対策'], '飲料・粉末飲料':['水分補給'], '調味料':['調理'], '食品セット':['非常食','食事','栄養補給']
+      },
+      '水・浄水': {'飲料水':['水分補給'],'水タンク・給水容器':['給水','物資保管'],'浄水器':['浄水'],'浄水用品':['浄水']},
+      'トイレ・衛生': {'携帯トイレ':['トイレ','排泄','プライバシー','衛生管理','要配慮者対応'],'簡易トイレ':['トイレ','排泄','プライバシー','衛生管理'],'組立式トイレ':['トイレ','排泄','プライバシー','避難所運営'],'トイレテント':['トイレ','プライバシー','要配慮者対応'],'トイレ処理用品':['トイレ','排泄','衛生管理'],'トイレットペーパー':['トイレ'],'ウェットティッシュ':['衛生管理'],'手洗い用品':['手洗い','衛生管理'],'消毒・除菌用品':['消毒','衛生管理'],'清掃用品':['清掃','衛生管理'],'ゴミ袋・廃棄用品':['ゴミ処理','衛生管理'],'生理用品':['女性対応','衛生管理'],'おむつ・介護用品':['要配慮者対応','排泄']},
+      '照明・電源': {'LEDランタン':['停電対策','照明','作業'],'ソーラーランタン':['停電対策','ソーラー','照明'],'ガスランタン':['停電対策','照明'],'ヘッドライト':['停電対策','照明','作業'],'電池':['停電対策'],'モバイルバッテリー':['停電対策','電源確保','充電'],'ポータブル電源':['停電対策','電源確保','充電'],'ソーラーパネル':['ソーラー','電源確保'],'発電機':['停電対策','電源確保'],'電源タップ・延長コード':['電源確保'],'充電器・ケーブル':['充電']},
+      '睡眠・寝具': {'寝袋':['睡眠','防寒'],'マット':['睡眠','休憩'],'コット':['睡眠','休憩'],'毛布・ブランケット':['睡眠','防寒'],'枕':['睡眠'],'シーツ・寝具用品':['睡眠','衛生管理'],'防寒寝具':['睡眠','防寒']},
+      'シェルター・プライバシー': {'避難所テント':['プライバシー','簡易個室','就寝','避難所運営'],'プライバシーテント':['プライバシー','簡易個室','着替え','授乳'],'間仕切り・パーティション':['プライバシー','簡易個室','避難所運営'],'目隠し用品':['プライバシー','着替え'],'タープ':['雨対策','日除け'],'シェルター':['雨対策','日除け','避難所運営']},
+      '調理・生活': {'シングルバーナー':['調理','熱源確保'],'カセットコンロ':['調理','熱源確保'],'燃料・ガス缶':['熱源確保'],'クッカー・鍋':['調理','お湯'],'ケトル':['お湯'],'食器':['食事','配膳'],'カトラリー':['食事','配膳'],'調理器具':['調理'],'ウォータージャグ':['給水','水分補給'],'クーラーボックス':['保冷','食品保存'],'保冷剤':['保冷','食品保存']},
+      '冷暖房・気候対策': {'暑さ対策用品':['暑さ対策','熱中症対策'],'冷却用品':['暑さ対策','熱中症対策'],'扇風機・送風用品':['暑さ対策','熱中症対策','換気'],'防寒用品':['防寒','低体温症対策'],'カイロ':['防寒','低体温症対策'],'暖房用品':['暖房','防寒'],'レインウェア':['雨対策'],'雨対策用品':['雨対策'],'断熱用品':['断熱','防寒']},
+      '救急・安全': {'救急セット':['救急'],'救急用品':['救急'],'マスク':['衛生管理','要配慮者対応'],'手袋':['安全確保','作業'],'軍手':['安全確保','作業'],'ヘルメット':['安全確保'],'防災ベスト':['安全確保','避難誘導'],'安全用品':['安全確保'],'消火用品':['火災対策'],'携帯工具':['作業','復旧作業'],'ロープ・固定用品':['固定','復旧作業']},
+      '情報・通信': {'防災ラジオ':['情報収集','通信'],'ホイッスル':['救助要請','避難誘導'],'拡声器':['情報発信','避難誘導'],'情報掲示用品':['情報発信','避難所運営'],'筆記用品':['情報発信','避難所運営'],'地図・案内用品':['情報収集','避難誘導']},
+      '運搬・収納': {'防災バッグ':['避難','携帯'],'リュック':['避難','携帯'],'防水バッグ':['防水','物資保管'],'コンテナ':['物資保管','物資搬送'],'収納ボックス':['物資保管','収納'],'キャリー':['物資搬送'],'台車':['物資搬送'],'収納袋':['収納'],'ポーチ':['収納','携帯']}
+    };
+    function refreshProductMasterOptions_(large,small){
+      const cur=id=>document.getElementById(id)?.value||'';
+      fillSelect_('pedit-status',MASTER_OPTIONS.status,cur('pedit-status'));
+      fillSelect_('pedit-calcType',MASTER_OPTIONS.calcType,cur('pedit-calcType'));
+      fillSelect_('pedit-priority',MASTER_OPTIONS.priority,cur('pedit-priority'));
+      fillSelect_('pedit-unit',MASTER_OPTIONS.unit,cur('pedit-unit'));
+      fillSelect_('pedit-catLarge',MASTER_OPTIONS.catLarge,large||'');
+      const smallEl=document.getElementById('pedit-catSmall');
+      const smalls=Object.keys(CATEGORY_MAP[large]||{});
+      fillSelect_('pedit-catSmall',smalls,smalls.includes(small)?small:'');
+      const groups=calcGroups.map(g=>String(g.name||'').trim()).filter(Boolean);
+      fillSelect_('pedit-calcGroup',['（グループなし）',...groups],cur('pedit-calcGroup')||'（グループなし）');
+    }
+    function updateProductCategoryOptions_(){
+      const large=document.getElementById('pedit-catLarge')?.value||'';
+      const small=document.getElementById('pedit-catSmall')?.value||'';
+      const arr=Object.keys(CATEGORY_MAP[large]||{});
+      fillSelect_('pedit-catSmall',arr,arr.includes(small)?small:'');
+    }
+
+    function updateProductCalcGroupRequired_(){
+      const groupEl=document.getElementById('pedit-calcGroup');
+      const label=document.getElementById('pedit-baseRatio-label');
+      const input=document.getElementById('pedit-baseRatio');
+      const hasGroup=!!groupEl && groupEl.value && groupEl.value!=='（グループなし）';
+      if(label) label.innerHTML=hasGroup ? '基本構成比 <span class="text-rose-600">*</span>' : '基本構成比 <span class="text-slate-400 text-xs">（グループ使用時必須）</span>';
+      if(input){ input.required=hasGroup; input.classList.toggle('border-rose-400',hasGroup && !String(input.value||'').trim()); }
+    }
+
+    // 商品編集モーダル (32項目対応)
+    function openProductEditModal(idx) {
+      editingProductIndex = idx;
+      const modal = document.getElementById('product-edit-modal');
+      const p = idx !== null ? products[idx] : {};
+      refreshProductMasterOptions_(p.catLarge || '', p.catSmall || '');
+
+      document.getElementById('pedit-status').value = p.status || '有効';
+      document.getElementById('pedit-supplier').value = p.supplier || '';
+      document.getElementById('pedit-name').value = p.name || '';
+      document.getElementById('pedit-model').value = p.model || '';
+      document.getElementById('pedit-url').value = p.url || '';
+      document.getElementById('pedit-img').value = p.img || '';
+
+      document.getElementById('pedit-forBiz').checked = p.forBiz ?? true;
+      document.getElementById('pedit-forHome').checked = p.forHome ?? false;
+      document.getElementById('pedit-forShelter').checked = p.forShelter ?? false;
+
+      document.getElementById('pedit-catLarge').value = p.catLarge || '';
+      document.getElementById('pedit-catSmall').value = p.catSmall || '';
+      document.getElementById('pedit-tags').value = p.tags || '';
+
+      document.getElementById('pedit-calcGroup').value = p.calcGroup || '';
+      document.getElementById('pedit-capacity').value = p.capacity || '';
+      document.getElementById('pedit-unit').value = p.unit || '';
+
+      document.getElementById('pedit-baseRatio').value = p.baseRatio || '';
+      document.getElementById('pedit-calcType').value = p.calcGroup ? 'グループ' : (p.calcType || '');
+      document.getElementById('pedit-capPeople').value = p.capPeople || 0;
+
+      document.getElementById('pedit-dailyNeed').value = p.dailyNeed || 0;
+      document.getElementById('pedit-minNeed').value = p.minNeed || 0;
+      document.getElementById('pedit-minimum').value = p.minimum || 1;
+
+      document.getElementById('pedit-priority').value = p.priority || '';
+      document.getElementById('pedit-shelfLife').value = p.shelfLife || '';
+      document.getElementById('pedit-storageCond').value = p.storageCond || '';
+
+      document.getElementById('pedit-expDate').value = p.expDate || '';
+      document.getElementById('pedit-price').value = p.price || 0;
+      document.getElementById('pedit-cost').value = p.cost || 0;
+
+      document.getElementById('pedit-leadTime').value = p.leadTime || '';
+      document.getElementById('pedit-stock').value = p.stock || 0;
+      document.getElementById('pedit-isReducedTax').checked = p.isReducedTax ?? false;
+      document.getElementById('pedit-note').value = p.note || '';
+      updateProductCalcGroupRequired_();
+
+      modal.classList.remove('hidden');
+    }
+
+    function closeProductEditModal() { document.getElementById('product-edit-modal').classList.add('hidden'); }
+
+    function saveProductModal() {
+      const pData = {
+        status: document.getElementById('pedit-status').value,
+        supplier: document.getElementById('pedit-supplier').value,
+        name: document.getElementById('pedit-name').value || '名称未設定',
+        model: document.getElementById('pedit-model').value,
+        url: document.getElementById('pedit-url').value,
+        img: document.getElementById('pedit-img').value,
+        forBiz: document.getElementById('pedit-forBiz').checked,
+        forHome: document.getElementById('pedit-forHome').checked,
+        forShelter: document.getElementById('pedit-forShelter').checked,
+        catLarge: document.getElementById('pedit-catLarge').value,
+        catSmall: document.getElementById('pedit-catSmall').value,
+        tags: document.getElementById('pedit-tags').value,
+        calcGroup: document.getElementById('pedit-calcGroup').value==='（グループなし）'?'':document.getElementById('pedit-calcGroup').value,
+        capacity: document.getElementById('pedit-capacity').value,
+        unit: document.getElementById('pedit-unit').value,
+        baseRatio: document.getElementById('pedit-baseRatio').value,
+        calcType: document.getElementById('pedit-calcGroup').value && document.getElementById('pedit-calcGroup').value!=='（グループなし）' ? 'グループ' : (document.getElementById('pedit-calcType').value==='グループ' ? '人数×日数' : document.getElementById('pedit-calcType').value),
+        capPeople: parseInt(document.getElementById('pedit-capPeople').value) || 0,
+        dailyNeed: parseInt(document.getElementById('pedit-dailyNeed').value) || 0,
+        minNeed: parseInt(document.getElementById('pedit-minNeed').value) || 0,
+        minimum: parseInt(document.getElementById('pedit-minimum').value) || 1,
+        priority: document.getElementById('pedit-priority').value,
+        shelfLife: document.getElementById('pedit-shelfLife').value,
+        storageCond: document.getElementById('pedit-storageCond').value,
+        expDate: document.getElementById('pedit-expDate').value,
+        price: parseInt(document.getElementById('pedit-price').value) || 0,
+        cost: parseInt(document.getElementById('pedit-cost').value) || 0,
+        leadTime: document.getElementById('pedit-leadTime').value,
+        stock: parseInt(document.getElementById('pedit-stock').value) || 0,
+        isReducedTax: document.getElementById('pedit-isReducedTax').checked,
+        note: document.getElementById('pedit-note').value
+      };
+
+      const ve=productValidation_(pData); if(ve.length){alert('入力必須項目を確認してください。\n\n'+ve.join('\n'));return;}
+      if (editingProductIndex !== null) products[editingProductIndex] = pData;
+      else products.push(pData);
+
+      closeProductEditModal();
+      saveMasterSettings_();
+      renderMasterTables(); calculateAll(); saveMasterSettings_();
+    }
+
+    // CSV/JSON Export & Import (32項目対応)
+    function exportProductMasterCSV() {
+      let csv = "商品ステータス,仕入先,商品名,型番,商品URL,画像URL,事業者向け,個人・家庭向け,避難所向け,大カテゴリ,小カテゴリ,用途タグ,計算グループ,内容量,単位,基本構成比,計算タイプ,対応人数,1日必要数,最低必要数,ミニマム,優先度,保存期間,保管条件,使用期限,上代,仕入価格,粗利額,粗利率,納期,在庫,備考,軽減税率\n";
+      products.forEach(p => {
+        const profit = p.price - (p.cost || 0);
+        const margin = p.price > 0 ? `${Math.round((profit / p.price) * 100)}%` : '0%';
+        csv += `"${p.status}","${p.supplier}","${p.name}","${p.model}","${p.url}","${p.img}",${p.forBiz},${p.forHome},${p.forShelter},"${p.catLarge}","${p.catSmall}","${p.tags}","${p.calcGroup}","${p.capacity}","${p.unit}","${p.baseRatio}","${p.calcType}",${p.capPeople},${p.dailyNeed},${p.minNeed},${p.minimum},"${p.priority}","${p.shelfLife}","${p.storageCond}","${p.expDate}",${p.price},${p.cost},${profit},"${margin}","${p.leadTime}",${p.stock},"${p.note}",${p.isReducedTax}\n`;
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `products_32cols_${new Date().toISOString().slice(0,10)}.csv`;
+      link.click();
+    }
+
+    function importProductMaster(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const content = e.target.result;
+          if (file.name.endsWith('.json')) {
+            products = JSON.parse(content);
+          } else {
+            const lines = content.split('\n').filter(l => l.trim().length > 0);
+            const newProds = [];
+            for (let i = 1; i < lines.length; i++) {
+              const cols = lines[i].split(',').map(c => c.replace(/^"(.*)"$/, '$1').trim());
+              if (cols.length >= 3) {
+                newProds.push({
+                  status: cols[0] || '有効', supplier: cols[1] || '', name: cols[2] || '品名未設定',
+                  model: cols[3] || '', url: cols[4] || '', img: cols[5] || '',
+                  forBiz: cols[6] === 'true', forHome: cols[7] === 'true', forShelter: cols[8] === 'true',
+                  catLarge: cols[9] || '', catSmall: cols[10] || '', tags: cols[11] || '',
+                  calcGroup: cols[12] || '', capacity: cols[13] || '', unit: cols[14] || '',
+                  baseRatio: cols[15] || '', calcType: cols[16] || '', capPeople: parseInt(cols[17]) || 0,
+                  dailyNeed: parseInt(cols[18]) || 0, minNeed: parseInt(cols[19]) || 0, minimum: parseInt(cols[20]) || 1,
+                  priority: cols[21] || '', shelfLife: cols[22] || '', storageCond: cols[23] || '', expDate: cols[24] || '',
+                  price: parseInt(cols[25]) || 0, cost: parseInt(cols[26]) || 0,
+                  leadTime: cols[29] || '', stock: parseInt(cols[30]) || 0, note: cols[31] || '',
+                  isReducedTax: cols[32] === 'true'
+                });
+              }
+            }
+            if (newProds.length > 0) products = newProds;
+          }
+          saveMasterSettings_();
+          alert('インポートが完了しました。');
+          renderMasterTables(); calculateAll(); saveMasterSettings_();
+        } catch (err) {
+          alert('インポートエラーが発生しました。ファイル形式を確認してください。');
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    function moveProduct(idx,direction){
+      const to=idx+direction;
+      if(idx<0||to<0||to>=products.length)return;
+      [products[idx],products[to]]=[products[to],products[idx]];
+      saveMasterSettings_(); renderMasterTables(); calculateAll();
+    }
+
+    function getOptionSetMargin_(set){
+      const price=getOptionSetUnitPrice_(set), cost=getOptionSetCost_(set);
+      return price>0 ? ((price-cost)/price*100) : 0;
+    }
+    function updateOptionSetPrice_(setId,val){
+      const set=standardSets.find(s=>s.id===setId); if(!set)return;
+      const v=String(val??'').trim(); set.price=v===''?null:Math.max(0,Number(v)||0);
+      saveMasterSettings_(); renderMasterTables(); calculateAll();
+    }
+
+    function getOptionSetListPrice_(set){
+      return standardSetItems.filter(i=>i.setId===set.id).reduce((sum,item)=>{
+        const prod=products.find(p=>p.model===item.productId||p.name===item.productId);
+        return sum+(prod?n_(prod.price)*Math.max(0,n_(item.qty,1)):0);
+      },0);
+    }
+    function getOptionSetCost_(set){
+      return standardSetItems.filter(i=>i.setId===set.id).reduce((sum,item)=>{
+        const prod=products.find(p=>p.model===item.productId||p.name===item.productId);
+        return sum+(prod?n_(prod.cost)*Math.max(0,n_(item.qty,1)):0);
+      },0);
+    }
+
+    // セット構成編集モーダル
+    function openSetItemsEditor(setId) {
+      editingSetId = setId;
+      const set = standardSets.find(s => s.id === setId);
+      document.getElementById('set-items-modal-title').innerText = `オプションセット [${set.name}] 構成編集`;
+      renderSetItemsEditorRows();
+      document.getElementById('set-custom-price').value = (set.price!==null && set.price!==undefined && set.price!=='') ? set.price : '';
+      renderSetItemsEditorSummary_();
+      document.getElementById('set-items-modal').classList.remove('hidden');
+    }
+
+    function closeSetItemsModal() { document.getElementById('set-items-modal').classList.add('hidden'); }
+
+    function renderSetItemsEditorRows() {
+      const tbody = document.getElementById('set-items-editor-body');
+      tbody.innerHTML = '';
+      const items = standardSetItems.filter(i => i.setId === editingSetId);
+
+      items.forEach((item, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="py-2 px-2">
+            <select onchange="updateSetItemProduct(${index}, this.value)" class="w-full text-xs cell-input rounded p-1">
+              ${products.map(p => `<option value="${p.model || p.name}" ${(p.model === item.productId || p.name === item.productId) ? 'selected' : ''}>[${p.model}] ${p.name}</option>`).join('')}
+            </select>
+          </td>
+          <td class="py-2 px-2">
+            <input type="number" value="${item.qty}" min="1" onchange="updateSetItemQty(${index}, this.value)" class="w-16 text-right font-bold cell-input text-xs rounded p-1">
+          </td>
+          <td class="py-2 px-2">
+            <input type="text" value="${item.note || ''}" onchange="updateSetItemNote(${index}, this.value)" class="w-full cell-input text-xs rounded p-1">
+          </td>
+          <td class="py-2 px-2 text-center">
+            <button onclick="removeSetItem(${index})" class="text-rose-600 hover:text-rose-800"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      lucide.createIcons();
+    }
+
+    function renderSetItemsEditorSummary_(){
+      const set=standardSets.find(s=>s.id===editingSetId); if(!set)return;
+      const list=getOptionSetListPrice_(set), cost=getOptionSetCost_(set), custom=document.getElementById('set-custom-price');
+      const selling=custom && String(custom.value).trim()!=='' ? Math.max(0,Number(custom.value)||0) : list;
+      const margin=selling>0 ? ((selling-cost)/selling*100) : 0;
+      const a=document.getElementById('set-summary-list-price'),b=document.getElementById('set-summary-cost'),c=document.getElementById('set-summary-margin');
+      if(a)a.innerText=`¥${list.toLocaleString()}`; if(b)b.innerText=`¥${cost.toLocaleString()}`; if(c){c.innerText=`${margin.toFixed(1)}%`;c.className='font-bold '+(margin<0?'text-rose-700':'text-teal-700');}
+    }
+
+    function addSetItemRow() {
+      if (products.length === 0) return;
+      standardSetItems.push({ setId: editingSetId, productId: products[0].model || products[0].name, qty: 1, note: '' });
+      renderSetItemsEditorRows();
+    }
+
+    function updateSetItemProduct(idx, pId) {
+      const items = standardSetItems.filter(i => i.setId === editingSetId);
+      if (items[idx]) items[idx].productId = pId;
+    }
+
+    function updateSetItemQty(idx, val) {
+      const items = standardSetItems.filter(i => i.setId === editingSetId);
+      if (items[idx]) items[idx].qty = parseInt(val) || 1;
+    }
+
+    function updateSetItemNote(idx, val) {
+      const items = standardSetItems.filter(i => i.setId === editingSetId);
+      if (items[idx]) items[idx].note = val;
+    }
+
+    function removeSetItem(idx) {
+      const items = standardSetItems.filter(i => i.setId === editingSetId);
+      const target = items[idx];
+      if (target) {
+        const globalIdx = standardSetItems.indexOf(target);
+        if (globalIdx > -1) standardSetItems.splice(globalIdx, 1);
+      }
+      renderSetItemsEditorRows();
+    }
+
+    function saveSetItemsModal() { const set=standardSets.find(s=>s.id===editingSetId); if(set){const v=document.getElementById('set-custom-price')?.value?.trim(); set.price=v===''?null:Math.max(0,Number(v)||0);} saveMasterSettings_(); closeSetItemsModal(); renderMasterTables(); calculateAll(); }
+  </script>
+</body>
+</html>

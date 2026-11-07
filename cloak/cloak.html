@@ -237,14 +237,6 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
         <input class="text" id="inName" placeholder="例：やまだ 様" enterkeyhint="done">
       </div>
       <div class="field">
-        <span class="label">ゲスト区分</span>
-        <div class="seg" id="inSide">
-          <button type="button" data-side="groom" aria-pressed="false">新郎側</button>
-          <button type="button" data-side="bride" aria-pressed="false">新婦側</button>
-          <button type="button" data-side="" aria-pressed="true">指定なし</button>
-        </div>
-      </div>
-      <div class="field">
         <span class="label">お預かり品</span>
         <div class="items" id="inItems"></div>
       </div>
@@ -273,7 +265,7 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
         <button class="btn" type="button" id="qClear">消す</button>
       </div>
       <div class="keypad" id="keypad" aria-label="番号入力"></div>
-      <p class="hint" style="margin-top:10px">番号を忘れたお客様は、お名前・区分・写真で探せます。下の一覧からお預かり中の写真を確認してください。</p>
+      <p class="hint" style="margin-top:10px">番号を忘れたお客様は、お名前・特徴・写真で探せます。下の一覧からお預かり中の写真を確認してください。</p>
     </div>
     <div id="outResults"></div>
   </section>
@@ -344,7 +336,7 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
 <script>
 (() => {
   "use strict";
-  const ITEMS = [["coat","コート"],["stole","ストール・羽織"],["umbrella","傘"],["paperbag","紙袋"],["bag","バッグ"],["other","その他"]];
+  const ITEMS = [["coat","コート"],["stole","ストール・羽織"],["paperbag","紙袋"],["bag","バッグ"],["other","その他"]];
   const SIDE = { groom: "新郎側", bride: "新婦側", "": "" };
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -768,8 +760,8 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
   });
   function csv() {
     const q = s => '"' + String(s ?? "").replace(/"/g, '""') + '"';
-    const rows = [["番号","お名前","区分","お預かり品","点数","特徴メモ","お預かり時刻","お返し時刻"]];
-    for (const t of sorted()) rows.push([t.id, t.name, SIDE[t.side] || "", itemText(t), itemCount(t), t.memo, fmtTime(t.createdAt), fmtTime(t.returnedAt)]);
+    const rows = [["番号","お名前","お預かり品","点数","特徴メモ","お預かり時刻","お返し時刻"]];
+    for (const t of sorted()) rows.push([t.id, t.name, itemText(t), itemCount(t), t.memo, fmtTime(t.createdAt), fmtTime(t.returnedAt)]);
     return rows.map(r => r.map(q).join(",")).join("\r\n");
   }
   const stamp = () => { const d = new Date(); return d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0") + "-" + String(d.getHours()).padStart(2, "0") + String(d.getMinutes()).padStart(2, "0"); };

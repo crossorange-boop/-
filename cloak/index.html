@@ -256,8 +256,10 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
       <div class="field">
         <span class="label">写真（取り違え防止におすすめ）</span>
         <div class="photos" id="inPhotos">
-          <label class="addphoto" id="addPhotoLbl">＋ 写真を<br>撮る<input type="file" accept="image/*" capture="environment" id="inPhotoInput"></label>
+          <label class="addphoto" id="addPhotoLbl">＋ カメラで<br>撮る<input type="file" accept="image/*" capture="environment" id="inPhotoInput"></label>
+          <label class="addphoto" id="pickPhotoLbl">＋ 写真を<br>選ぶ<input type="file" accept="image/*" id="inPhotoPick"></label>
         </div>
+        <p class="hint">「カメラで撮る」で何も起きない端末では「写真を選ぶ」を押し、出てきたメニューからカメラを選んでください。</p>
       </div>
       <button class="btn primary big" type="submit" id="inSubmit" disabled>お預かり品を選んでください</button>
     </form>
@@ -313,6 +315,14 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
         <button class="btn" type="button" id="csvCopy">テキストをコピー</button>
       </div>
       <pre class="csv" id="csvOut" hidden></pre>
+    </div>
+    <div class="panel">
+      <h2>この端末で使えるか確認</h2>
+      <p>本番で使う端末で、式の前に一度押してください。記録と写真がこの端末に保存できるかを試します（試験用のデータはすぐ消します）。</p>
+      <div class="row">
+        <button class="btn" type="button" id="selfTest">確認する</button>
+      </div>
+      <div id="selfTestOut" class="small" style="margin-top:10px"></div>
     </div>
     <div class="panel">
       <h2>ホーム画面に追加</h2>
@@ -386,8 +396,41 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
   async function photoURL(id) {
     if (urlCache.has(id)) return urlCache.get(id);
     const p = await dbGet("photos", id).catch(() => null);
-    if (!p || !p.blob) return null;
-    const u = URL.createObjectURL(p.blob); urlCache.set(id, u); return u;
+    if (!p) return null;
+    let u = null;
+    if (p.durl) u = p.durl;
+    else if (p.buf) u = URL.createObjectURL(new Blob([p.buf], { type: p.type || "image/jpeg" }));
+    else if (p.blob) u = URL.createObjectURL(p.blob);
+    if (u) urlCache.set(id, u);
+    return u;
+  }
+  const errName = e => (e && (e.name || e.message)) ? String(e.name || e.message).slice(0, 40) : "不明";
+  const readAs = (blob, kind) => new Promise((res, rej) => {
+    const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error);
+    kind === "url" ? r.readAsDataURL(blob) : r.readAsArrayBuffer(blob);
+  });
+  // 端末への保存が使えなくなったら、この画面を開いている間だけメモリで続行する
+  function toMemoryMode(err) {
+    if (!idb) return;
+    console.warn("IndexedDB unavailable, switching to memory:", err);
+    idb = null;
+    for (const t of S.tickets.values()) mem.tickets.set(t.id, t);
+    mem.meta.set("start", { k: "start", v: S.start }); mem.meta.set("lastIssued", { k: "lastIssued", v: S.lastIssued });
+    $("#storeWarn").hidden = false;
+  }
+  async function safePut(store, v) {
+    try { await dbPut(store, v); }
+    catch (e) { toMemoryMode(e); await dbPut(store, v); }
+  }
+  // 写真は Blob のままだと iPhone（Safari / アプリ内表示）で保存に失敗することがあるため、
+  // ArrayBuffer → data URL の順で試す。どちらも駄目ならこの画面を開いている間だけ保持する。
+  async function putPhoto(id, blob) {
+    if (!idb) { mem.photos.set(id, { id, blob }); return false; }
+    try { const buf = await readAs(blob, "buf"); await dbPut("photos", { id, buf, type: blob.type || "image/jpeg" }); return true; }
+    catch (e1) {
+      try { const durl = await readAs(blob, "url"); await dbPut("photos", { id, durl }); return true; }
+      catch (e2) { console.warn("photo save failed", e1, e2); return false; }
+    }
   }
   const nextNo = () => Math.max(S.lastIssued, S.start - 1) + 1;
   const sorted = () => [...S.tickets.values()].sort((a, b) => a.id - b.id);
@@ -463,12 +506,12 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
     sb.textContent = n === 0 ? "お預かり品を選んでください" : `${nextNo()}番で登録する（${n}点）`;
   }
   function renderDraftPhotos() {
-    const box = $("#inPhotos"); const add = $("#addPhotoLbl");
+    const box = $("#inPhotos"); const add = $("#addPhotoLbl"); const pick = $("#pickPhotoLbl");
     box.replaceChildren(...draft.photos.map((p, i) => el("div", { class: "thumb" }, [
       el("img", { src: p.url, alt: "お預かり品の写真" + (i + 1) }),
       el("button", { type: "button", class: "x", "aria-label": "写真を外す", onclick: () => { URL.revokeObjectURL(p.url); draft.photos.splice(i, 1); renderDraftPhotos(); } }, "×"),
-    ])), add);
-    add.hidden = draft.photos.length >= 4;
+    ])), add, pick);
+    add.hidden = pick.hidden = draft.photos.length >= 4;
   }
   function renderNext() { $("#nextNum").textContent = nextNo(); renderDraftItems(); }
   $("#inName").addEventListener("input", e => draft.name = e.target.value);
@@ -495,23 +538,28 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
   async function takePhotoInto(input, onBlob) {
     const f = input.files && input.files[0]; input.value = "";
     if (!f) return;
-    try { onBlob(await compress(f)); } catch (e) { toast("写真を読み込めませんでした。もう一度撮影してください"); }
+    let blob = f;
+    try { blob = await compress(f); } catch (e) { console.warn("compress failed, keeping original", e); }
+    try { await onBlob(blob); } catch (e) { toast("写真を取り込めませんでした（" + errName(e) + "）。もう一度お試しください"); }
   }
-  $("#inPhotoInput").addEventListener("change", e => takePhotoInto(e.target, blob => {
-    draft.photos.push({ id: newId(), blob, url: URL.createObjectURL(blob) }); renderDraftPhotos();
-  }));
+  const addDraftPhoto = blob => { draft.photos.push({ id: newId(), blob, url: URL.createObjectURL(blob) }); renderDraftPhotos(); };
+  $("#inPhotoInput").addEventListener("change", e => takePhotoInto(e.target, addDraftPhoto));
+  $("#inPhotoPick").addEventListener("change", e => takePhotoInto(e.target, addDraftPhoto));
 
   $("#inForm").addEventListener("submit", async e => {
     e.preventDefault();
     if (!itemCount(draft)) return;
     const id = nextNo(); const now = Date.now();
     const t = { id, name: draft.name.trim(), side: draft.side, items: { ...draft.items }, memo: draft.memo.trim(), photos: draft.photos.map(p => p.id), createdAt: now, returnedAt: null, updatedAt: now };
+    // 番号の記録を最優先で保存し、写真の保存に失敗しても登録は止めない
     try {
-      for (const p of draft.photos) { await dbPut("photos", { id: p.id, blob: p.blob }); urlCache.set(p.id, p.url); }
-      await dbPut("tickets", t);
-      S.lastIssued = id; await dbPut("meta", { k: "lastIssued", v: id });
-    } catch (err) { toast("保存に失敗しました。もう一度お試しください"); return; }
+      await safePut("tickets", t);
+      S.lastIssued = id; await safePut("meta", { k: "lastIssued", v: id });
+    } catch (err) { toast("記録を保存できませんでした（" + errName(err) + "）。もう一度お試しください"); return; }
     S.tickets.set(id, t); pushCloud(t);
+    let photoLost = 0;
+    for (const p of draft.photos) { urlCache.set(p.id, p.url); if (!(await putPhoto(p.id, p.blob))) photoLost++; }
+    if (photoLost) setTimeout(() => toast("写真を端末に保存できませんでした。番号の記録は保存済みです（写真はこの画面を閉じるまで表示されます）"), 300);
     // reset draft
     Object.assign(draft, { name: "", side: "", items: {}, memo: "", photos: [] });
     $("#inName").value = ""; $("#inMemo").value = "";
@@ -550,10 +598,18 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
       if (u) photosBox.append(el("img", { src: u, alt: "お預かり品の写真", onclick: () => zoom(u, id) }));
     }
     if (!photosBox.childElementCount) photosBox.append(el("p", { class: "hint", text: t.restored ? "バックアップから復元した記録のため写真はありません。" : "写真はありません。" }));
-    const add = el("label", { class: "btn" }, ["写真を追加", el("input", { type: "file", accept: "image/*", capture: "environment", style: "position:absolute;width:1px;height:1px;opacity:0", onchange: e => takePhotoInto(e.target, async blob => {
-      const pid = newId(); await dbPut("photos", { id: pid, blob }).catch(() => {}); t.photos = [...(t.photos || []), pid]; await save(t); showDetail(id);
-    }) })]);
-    add.style.position = "relative";
+    const addPhoto = async blob => {
+      const pid = newId(); urlCache.set(pid, URL.createObjectURL(blob));
+      const ok = await putPhoto(pid, blob);
+      t.photos = [...(t.photos || []), pid]; await save(t); showDetail(id);
+      if (!ok) toast("写真を端末に保存できませんでした（この画面を閉じるまで表示されます）");
+    };
+    const photoBtn = (label, capture) => {
+      const b = el("label", { class: "btn", style: "position:relative" }, [label, el("input", { type: "file", accept: "image/*", capture: capture ? "environment" : false, style: "position:absolute;width:1px;height:1px;opacity:0", onchange: e => takePhotoInto(e.target, addPhoto) })]);
+      return b;
+    };
+    const add = photoBtn("カメラで撮る", true);
+    const add2 = photoBtn("写真を選ぶ", false);
 
     const nameIn = el("input", { class: "text", id: "dName", value: t.name || "", placeholder: "お名前（任意）" });
     nameIn.addEventListener("change", async () => { t.name = nameIn.value.trim(); await save(t); });
@@ -593,7 +649,7 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
               t.returnedAt = Date.now(); await save(t); closeOverlay(); toast(t.id + "番をお返ししました");
               if (S.tab === "out") { $("#q").value = ""; S.q = ""; renderOut(); }
             } }, `${itemCount(t)}点を確認してお返し完了`),
-        add,
+        add, add2,
         el("button", { class: "btn", type: "button", onclick: closeOverlay }, "閉じる"),
         del,
       ]),
@@ -607,7 +663,7 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
   }
   async function save(t) {
     t.updatedAt = Date.now();
-    try { await dbPut("tickets", t); } catch (e) { toast("保存に失敗しました"); }
+    try { await safePut("tickets", t); } catch (e) { toast("保存に失敗しました（" + errName(e) + "）"); }
     S.tickets.set(t.id, t); pushCloud(t); renderAll();
   }
 
@@ -716,6 +772,24 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
     const text = csv();
     const fallback = () => { const p = showCsvText(); const r = document.createRange(); r.selectNodeContents(p); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("選択しました。コピーしてメモ等に貼り付けてください"); };
     try { navigator.clipboard.writeText(text).then(() => toast("コピーしました。メモアプリ等に貼り付けてください"), fallback); } catch (e) { fallback(); }
+  });
+  $("#selfTest").addEventListener("click", async () => {
+    const out = $("#selfTestOut"); const lines = [];
+    const line = (ok, text) => lines.push(el("div", { style: "color:var(" + (ok ? "--ok" : "--danger") + ")" }, (ok ? "○ " : "× ") + text));
+    line(!!idb, idb ? "記録をこの端末に保存できます" : "記録をこの端末に保存できません（プライベートブラウズ等）。画面を閉じると消えます");
+    if (idb) {
+      const c = document.createElement("canvas"); c.width = c.height = 8; c.getContext("2d").fillRect(0, 0, 8, 8);
+      const blob = await new Promise(r => c.toBlob(r, "image/jpeg", .8));
+      const pid = "selftest-" + newId();
+      const ok = blob ? await putPhoto(pid, blob) : false;
+      let back = false; try { back = !!(await dbGet("photos", pid)); } catch (e) {}
+      await dbDel("photos", pid).catch(() => {});
+      line(ok && back, ok && back ? "写真をこの端末に保存できます" : "写真をこの端末に保存できません（番号の記録は保存されます）");
+    }
+    let persisted = null; try { persisted = navigator.storage && navigator.storage.persisted ? await navigator.storage.persisted() : null; } catch (e) {}
+    if (persisted !== null) lines.push(el("div", { class: "muted" }, persisted ? "保存領域：消去されにくい設定になっています" : "保存領域：通常（端末の空き容量が少ないと消える可能性があります）"));
+    lines.push(el("div", { class: "muted" }, cloud ? "自動バックアップ：接続中" : "自動バックアップ：未接続（端末内の保存のみ）"));
+    out.replaceChildren(...lines);
   });
   const wipeWord = $("#wipeWord");
   wipeWord.addEventListener("input", () => $("#wipeBtn").disabled = wipeWord.value.trim() !== "削除");

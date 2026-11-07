@@ -190,6 +190,13 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
 .zoom img { width: 100%; height: auto; border-radius: 12px; display: block; }
 .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 99px; z-index: 30; font-weight: 700; max-width: calc(100% - 32px); text-align: center; }
 
+.btn.help { min-height: 36px; padding: 6px 14px; font-size: .9rem; }
+.manual h2 { font-family: var(--font-display); font-size: 1.35rem; margin: 0 0 6px; }
+.manual h3 { font-size: 1.02rem; margin: 22px 0 6px; color: var(--accent); }
+.manual ol, .manual ul { margin: 0; padding-left: 1.4em; display: grid; gap: 6px; }
+.manual p { margin: 0 0 8px; }
+.manual .btn { margin-top: 22px; }
+
 @media (max-width: 760px) {
   .checkin { grid-template-columns: minmax(0, 1fr); }
   .stub { position: static; }
@@ -210,6 +217,7 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
       <span>お預かり中<b id="stIn">0</b>組</span>
       <span>お返し済<b id="stOut">0</b>組</span>
       <span class="sync" id="sync">この端末に保存</span>
+      <button class="btn help" type="button" id="helpBtn">使い方</button>
     </div>
     <nav class="tabs" role="tablist">
       <button role="tab" data-tab="in" aria-selected="true">預かる</button>
@@ -331,6 +339,52 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
   </section>
 </main>
 
+<template id="manualTpl">
+<div class="sheet manual" role="dialog" aria-label="使い方">
+  <h2>使い方</h2>
+  <h3>1. お預かりするとき（「預かる」タブ）</h3>
+  <ol>
+    <li>お名前を入力します（空欄でも登録できます）。</li>
+    <li>預かった品の数を、品目のボタンで増やします（＋で増え、−で減ります）。</li>
+    <li>必要なら特徴メモを書き、写真を撃ちます。「カメラで撃つ」で開かない端末では、「写真を選ぶ」を押してメニューからカメラを選びます。</li>
+    <li>「…甾で登録する」を押します。番号が大きく表示されます。</li>
+    <li>お客様に番号を伝えるか、画面を撚影していただきます。荷物には同じ番号を貼ります。</li>
+  </ol>
+  <h3>2. お返しするとき（「お返し」タブ）</h3>
+  <ol>
+    <li>番号がわかれば、数字ボタンで入力します。</li>
+    <li>番号がわからなければ、お名前、特徴メモ、品目の言葉で探せます（びらがな・カタカナどちらでも可）。</li>
+    <li>カードを押すと、写真と内容が見られます。品目を確かめてから「…点を確認してお返し完了」を押します。</li>
+    <li>返却を取り消したいときは、同じ画面で「お返しを取り消す」を押します。</li>
+  </ol>
+  <h3>3. 一覧を見る（「一覧」タブ）</h3>
+  <p>「お預かり中」で、まだ返していない荷物だけを表示できます。お開きの前に確認してください。</p>
+  <h3>4. 記録を直す</h3>
+  <p>カードを押すと、お名前やメモを直せます。入力し終えたら欄の外を押すと保存されます。写真を追加することもできます。</p>
+  <h3>5. 管理（「管理」タブ）</h3>
+  <p>管理タブは、タイトル「クローク控え帳」を二秒ほど押し続けると表示されます。</p>
+  <ul>
+    <li><b>CSVを保存</b>：番号、お名前、品目などを書き出します（写真は含まれません）。</li>
+    <li><b>この端末で使えるか確認</b>：式の前に一度押すと、記録と写真が保存できるかを確かめられます。</li>
+    <li><b>画面をつけたままにする</b>：iPadがスリープしにくくなります。</li>
+  </ul>
+  <h3>全データの削除（すべての記録を消す）</h3>
+  <p>式が終わり、すべてお返ししたあとにだけ行ってください。<b>元に戻せません。</b></p>
+  <ol>
+    <li>タイトル「クローク控え帳」を二秒ほど押し続けて、「管理」タブを開きます。</li>
+    <li>いちばん下の「すべての記録を消す」の欄に、「削除」と入力します。</li>
+    <li>「すべて消す」を押します。</li>
+  </ol>
+  <p>削除すると、この端末の記録と自動バックアップの両方が消えます。</p>
+  <h3>困ったとき</h3>
+  <ul>
+    <li>写真が保存できないとき：番号の記録は保存されています。写真は画面を閉じるまで表示されます。</li>
+    <li>「記録を保存できません」と出たとき：プライベートブラウズでは記録が残りません。通常のSafariやChromeで開き直してください。</li>
+    <li>番号を間違えたとき：お返し前なら、詳細画面の「誤登録を削除」で消せます（2回押すと削除されます）。</li>
+  </ul>
+  <button class="btn primary big" type="button" data-close>閉じる</button>
+</div>
+</template>
 <div class="overlay" id="ov" hidden></div>
 <div class="toast" id="toast" hidden></div>
 
@@ -803,6 +857,12 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
     if (persisted !== null) lines.push(el("div", { class: "muted" }, persisted ? "保存領域：消去されにくい設定になっています" : "保存領域：通常（端末の空き容量が少ないと消える可能性があります）"));
     lines.push(el("div", { class: "muted" }, cloud ? "自動バックアップ：接続中" : "自動バックアップ：未接続（端末内の保存のみ）"));
     out.replaceChildren(...lines);
+  });
+  $("#helpBtn").addEventListener("click", () => {
+    const node = $("#manualTpl").content.firstElementChild.cloneNode(true);
+    node.querySelector("[data-close]").addEventListener("click", closeOverlay);
+    openOverlay(node);
+    node.scrollTop = 0;
   });
   const wipeWord = $("#wipeWord");
   wipeWord.addEventListener("input", () => $("#wipeBtn").disabled = wipeWord.value.trim() !== "削除");

@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"></head><body>
+<title>クローク控え帳</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="クローク">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+/* Layout: 一台の iPad を据え置き。上部に件数、タブで「預かる / お返し / 一覧 / 管理」。番号は控え札のように大きく見せる */
+:root {
+  --bg: #F3F4F6;
+  --surface: #FFFFFF;
+  --sunken: #E9EBEF;
+  --ink: #1C212C;
+  --muted: #5F6676;
+  --line: #D9DCE3;
+  --accent: #1E5A53;
+  --accent-soft: #DCEAE7;
+  --on-accent: #FFFFFF;
+  --gold: #8E6A2B;
+  --ok: #2C7A4B;
+  --ok-soft: #DDEFE3;
+  --danger: #B0432A;
+  --danger-soft: #F6E1DA;
+  --shadow: 0 1px 2px rgba(20,24,34,.06), 0 6px 20px rgba(20,24,34,.06);
+  --font-display: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+  --r: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11141A; --surface: #1A1E26; --sunken: #232833; --ink: #E8EBF1; --muted: #9AA1AF; --line: #2E3441;
+    --accent: #6DBAAE; --accent-soft: #1F3A37; --on-accent: #0D1A18; --gold: #D6B06C;
+    --ok: #7CC99A; --ok-soft: #1D3326; --danger: #E8876E; --danger-soft: #3A221C;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11141A; --surface: #1A1E26; --sunken: #232833; --ink: #E8EBF1; --muted: #9AA1AF; --line: #2E3441;
+  --accent: #6DBAAE; --accent-soft: #1F3A37; --on-accent: #0D1A18; --gold: #D6B06C;
+  --ok: #7CC99A; --ok-soft: #1D3326; --danger: #E8876E; --danger-soft: #3A221C;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.25);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.6;
+  -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent;
+}
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.num { font-family: var(--font-display); font-variant-numeric: tabular-nums; font-weight: 800; color: var(--gold); letter-spacing: .02em; }
+
+/* header */
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+.top-inner, main {
+  max-width: 1100px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.top-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding-block: 12px 0; }
+.brand { font-family: var(--font-display); font-weight: 800; font-size: 1.35rem; margin: 0; letter-spacing: .06em; }
+.stats { display: flex; gap: 14px; margin-left: auto; font-size: .9rem; color: var(--muted); align-items: baseline; flex-wrap: wrap; }
+.stats b { font-family: var(--font-display); font-size: 1.4rem; color: var(--ink); font-variant-numeric: tabular-nums; margin: 0 2px; }
+.sync { font-size: .78rem; padding: 2px 10px; border-radius: 99px; background: var(--sunken); color: var(--muted); }
+.sync.on { background: var(--ok-soft); color: var(--ok); }
+.sync.err { background: var(--danger-soft); color: var(--danger); }
+nav.tabs { display: flex; gap: 4px; width: 100%; overflow-x: auto; }
+nav.tabs button {
+  flex: 1 0 auto; min-width: 72px; border: 0; background: none; padding: 12px 14px 10px; font-weight: 700; color: var(--muted);
+  border-bottom: 3px solid transparent; font-size: 1.02rem; letter-spacing: .08em;
+}
+nav.tabs button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+main { padding-block: 20px 60px; }
+.warnbar { background: var(--danger-soft); color: var(--danger); padding: 10px 14px; border-radius: 10px; margin-bottom: 16px; font-weight: 500; }
+
+/* shared pieces */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 20px; }
+.label { display: block; font-size: .8rem; font-weight: 700; color: var(--muted); letter-spacing: .12em; margin-bottom: 6px; }
+.field { display: grid; gap: 4px; }
+.text {
+  width: 100%; border: 1px solid var(--line); background: var(--bg); border-radius: 10px; padding: 12px 14px; font-size: 1.1rem;
+}
+textarea.text { min-height: 64px; resize: vertical; font-size: 1rem; }
+.btn {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 12px 18px; font-weight: 700;
+  min-height: 48px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.btn.ok { background: var(--ok); color: var(--on-accent); border-color: var(--ok); }
+.btn.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+.btn.danger.armed { background: var(--danger); color: var(--on-accent); }
+.btn.big { font-size: 1.2rem; min-height: 60px; width: 100%; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.seg button { flex: 1; border: 0; background: var(--surface); padding: 12px 8px; font-weight: 500; min-height: 48px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.chip { display: inline-block; font-size: .78rem; padding: 1px 9px; border-radius: 99px; background: var(--sunken); color: var(--muted); font-weight: 500; white-space: nowrap; }
+.chip.groom { background: var(--accent-soft); color: var(--accent); }
+.chip.bride { background: color-mix(in srgb, var(--gold) 18%, var(--surface)); color: var(--gold); }
+.chip.back { background: var(--ok-soft); color: var(--ok); }
+.muted { color: var(--muted); }
+.small { font-size: .85rem; }
+
+/* 預かる */
+.checkin { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); gap: 20px; align-items: start; }
+.stub {
+  position: sticky; top: 130px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  padding: 22px 20px; text-align: center; box-shadow: var(--shadow);
+  -webkit-mask: radial-gradient(circle 12px at 0 50%, #0000 98%, #000) left / 51% 100% no-repeat, radial-gradient(circle 12px at 100% 50%, #0000 98%, #000) right / 51% 100% no-repeat;
+          mask: radial-gradient(circle 12px at 0 50%, #0000 98%, #000) left / 51% 100% no-repeat, radial-gradient(circle 12px at 100% 50%, #0000 98%, #000) right / 51% 100% no-repeat;
+}
+.stub .eyebrow { font-size: .8rem; letter-spacing: .3em; color: var(--muted); font-weight: 700; }
+.stub .num { font-size: clamp(4.5rem, 12vw, 7rem); line-height: 1.05; display: block; margin: 6px 0 10px; }
+.stub hr { border: 0; border-top: 2px dashed var(--line); margin: 14px 0; }
+.stub p { margin: 0; font-size: .88rem; color: var(--muted); }
+.form { display: grid; gap: 18px; }
+.items { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 10px; }
+.counter { border: 1px solid var(--line); border-radius: 12px; padding: 8px 8px 8px 14px; display: flex; align-items: center; gap: 6px; background: var(--bg); }
+.counter.has { border-color: var(--accent); background: var(--accent-soft); }
+.counter .nm { flex: 1; min-width: 0; font-weight: 500; font-size: .95rem; line-height: 1.3; }
+.counter .ct { width: 1.6em; text-align: center; font-family: var(--font-display); font-weight: 800; font-size: 1.3rem; font-variant-numeric: tabular-nums; }
+.counter button { width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); font-size: 1.3rem; line-height: 1; padding: 0; }
+.photos { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.thumb { position: relative; width: 96px; height: 96px; border-radius: 10px; overflow: hidden; background: var(--sunken); flex: none; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb .x { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 99px; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 1rem; line-height: 1; padding: 0; }
+.addphoto { width: 96px; height: 96px; border: 2px dashed var(--line); border-radius: 10px; display: grid; place-items: center; text-align: center; color: var(--muted); font-size: .85rem; font-weight: 700; cursor: pointer; background: var(--bg); }
+.addphoto input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.hint { font-size: .85rem; color: var(--muted); margin: 0; }
+
+/* お返し */
+.searchbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+.searchbar .text { font-size: 1.4rem; padding: 14px 16px; }
+.keypad { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.keypad button { min-height: 52px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); font-family: var(--font-display); font-weight: 800; font-size: 1.4rem; }
+.keypad button.fn { font-family: var(--font-body); font-size: .95rem; font-weight: 700; color: var(--muted); }
+.results { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; margin-top: 18px; }
+.card {
+  display: grid; grid-template-columns: 76px minmax(0, 1fr) 72px; gap: 12px; align-items: center; text-align: left; width: 100%;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px;
+}
+.card:hover { border-color: var(--accent); }
+.card.returned { opacity: .62; }
+.card .cnum { font-size: 2.4rem; line-height: 1; text-align: center; }
+.card .who { font-weight: 700; font-size: 1.05rem; overflow-wrap: anywhere; }
+.card .what { font-size: .88rem; color: var(--muted); overflow-wrap: anywhere; }
+.card .pic { width: 72px; height: 72px; border-radius: 10px; overflow: hidden; background: var(--sunken); display: grid; place-items: center; color: var(--muted); font-size: .72rem; }
+.card .pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.section-h { display: flex; align-items: baseline; gap: 12px; margin: 26px 0 0; font-size: 1rem; flex-wrap: wrap; }
+.empty { text-align: center; color: var(--muted); padding: 40px 16px; border: 2px dashed var(--line); border-radius: var(--r); margin-top: 18px; }
+.empty strong { display: block; color: var(--ink); font-size: 1.1rem; margin-bottom: 4px; }
+
+/* 一覧 */
+.listhead { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+.listhead .seg { min-width: min(100%, 360px); }
+
+/* 管理 */
+.admin { display: grid; gap: 16px; max-width: 720px; }
+.admin h2 { font-size: 1.05rem; margin: 0 0 6px; }
+.admin p { margin: 0 0 12px; color: var(--muted); font-size: .92rem; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.switch { display: flex; align-items: center; gap: 12px; font-weight: 500; }
+.switch input { width: 24px; height: 24px; accent-color: var(--accent); }
+pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: .8rem; max-height: 220px; overflow: auto; margin: 12px 0 0; user-select: all; }
+
+/* overlays */
+.overlay { position: fixed; inset: 0; z-index: 20; background: rgba(12,15,22,.55); display: grid; place-items: center; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); overflow-y: auto; }
+.sheet { background: var(--surface); border-radius: 18px; width: min(100%, 640px); padding: 24px; box-shadow: var(--shadow); max-height: 100%; overflow-y: auto; }
+.issued { text-align: center; }
+.issued .eyebrow { letter-spacing: .4em; font-weight: 700; color: var(--muted); font-size: .95rem; }
+.issued .num { font-size: clamp(7rem, 32vw, 13rem); line-height: 1; display: block; margin: 10px 0 6px; }
+.issued .who { font-size: 1.3rem; font-weight: 700; }
+.issued .what { color: var(--muted); }
+.steps { text-align: left; background: var(--bg); border-radius: 12px; padding: 14px 16px; margin: 18px 0; display: grid; gap: 6px; font-size: .98rem; }
+.steps b { color: var(--accent); }
+.detail-h { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.detail-h .num { font-size: 4.2rem; line-height: 1; }
+.bigphotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); gap: 10px; margin: 16px 0; }
+.bigphotos img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; display: block; max-width: 100%; }
+.dgrid { display: grid; gap: 14px; }
+.times { font-size: .85rem; color: var(--muted); display: flex; gap: 16px; flex-wrap: wrap; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.actions .grow { flex: 1 1 200px; }
+.zoom img { width: 100%; height: auto; border-radius: 12px; display: block; }
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 99px; z-index: 30; font-weight: 700; max-width: calc(100% - 32px); text-align: center; }
+
+@media (max-width: 760px) {
+  .checkin { grid-template-columns: minmax(0, 1fr); }
+  .stub { position: static; }
+  .stub .num { font-size: 4.5rem; }
+  .keypad { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .stats { margin-left: 0; width: 100%; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sheet { animation: rise .18s ease-out; }
+  @keyframes rise { from { transform: translateY(10px); opacity: .6; } to { transform: none; opacity: 1; } }
+}
+</style>
+
+<header class="top">
+  <div class="top-inner">
+    <h1 class="brand">クローク控え帳</h1>
+    <div class="stats" aria-live="polite">
+      <span>お預かり中<b id="stIn">0</b>組</span>
+      <span>お返し済<b id="stOut">0</b>組</span>
+      <span class="sync" id="sync">この端末に保存</span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" data-tab="in" aria-selected="true">預かる</button>
+      <button role="tab" data-tab="out" aria-selected="false">お返し</button>
+      <button role="tab" data-tab="list" aria-selected="false">一覧</button>
+      <button role="tab" data-tab="admin" aria-selected="false">管理</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="warnbar" id="storeWarn" hidden>この端末に記録を保存できない状態です（プライベートブラウズ等）。画面を閉じると記録が消えます。通常のSafariで開き直してください。</div>
+
+  <!-- 預かる -->
+  <section id="tab-in" class="checkin">
+    <aside class="stub" aria-label="次に発行する番号">
+      <div class="eyebrow">CLOAK No.</div>
+      <span class="num" id="nextNum">1</span>
+      <hr>
+      <p>登録すると、この番号がお客様の控えになります。荷物には同じ番号をマスキングテープ等で貼ってください。</p>
+    </aside>
+    <form class="form panel" id="inForm" autocomplete="off">
+      <div class="field">
+        <label class="label" for="inName">お名前（任意・ふりがなでも可）</label>
+        <input class="text" id="inName" placeholder="例：やまだ 様" enterkeyhint="done">
+      </div>
+      <div class="field">
+        <span class="label">ゲスト区分</span>
+        <div class="seg" id="inSide">
+          <button type="button" data-side="groom" aria-pressed="false">新郎側</button>
+          <button type="button" data-side="bride" aria-pressed="false">新婦側</button>
+          <button type="button" data-side="" aria-pressed="true">指定なし</button>
+        </div>
+      </div>
+      <div class="field">
+        <span class="label">お預かり品</span>
+        <div class="items" id="inItems"></div>
+      </div>
+      <div class="field">
+        <label class="label" for="inMemo">特徴メモ（任意）</label>
+        <textarea class="text" id="inMemo" placeholder="例：黒のロングコート、白い紙袋（○○百貨店）"></textarea>
+      </div>
+      <div class="field">
+        <span class="label">写真（取り違え防止におすすめ）</span>
+        <div class="photos" id="inPhotos">
+          <label class="addphoto" id="addPhotoLbl">＋ 写真を<br>撮る<input type="file" accept="image/*" capture="environment" id="inPhotoInput"></label>
+        </div>
+      </div>
+      <button class="btn primary big" type="submit" id="inSubmit" disabled>お預かり品を選んでください</button>
+    </form>
+  </section>
+
+  <!-- お返し -->
+  <section id="tab-out" hidden>
+    <div class="panel">
+      <label class="label" for="q">控え番号 または お名前で探す</label>
+      <div class="searchbar">
+        <input class="text" id="q" type="search" placeholder="例：12 / やまだ / 黒いコート" enterkeyhint="search">
+        <button class="btn" type="button" id="qClear">消す</button>
+      </div>
+      <div class="keypad" id="keypad" aria-label="番号入力"></div>
+      <p class="hint" style="margin-top:10px">番号を忘れたお客様は、お名前・区分・写真で探せます。下の一覧からお預かり中の写真を確認してください。</p>
+    </div>
+    <div id="outResults"></div>
+  </section>
+
+  <!-- 一覧 -->
+  <section id="tab-list" hidden>
+    <div class="listhead">
+      <h2 style="margin:0;font-size:1.1rem">お預かり一覧</h2>
+      <div class="seg" id="listFilter">
+        <button type="button" data-f="in" aria-pressed="true">お預かり中</button>
+        <button type="button" data-f="out" aria-pressed="false">お返し済</button>
+        <button type="button" data-f="all" aria-pressed="false">すべて</button>
+      </div>
+    </div>
+    <div id="listResults"></div>
+  </section>
+
+  <!-- 管理 -->
+  <section id="tab-admin" class="admin" hidden>
+    <div class="panel">
+      <h2>開始番号</h2>
+      <p>最初に発行する番号です。登録が1件でもあると変更できません。番号は一度発行したら再利用しません。</p>
+      <div class="row">
+        <input class="text" id="startNum" type="number" inputmode="numeric" min="1" style="max-width:140px">
+        <button class="btn" type="button" id="startSave">設定する</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>画面の消灯を防ぐ</h2>
+      <p>据え置きで使うとき、iPad が自動でスリープしないようにします（対応端末のみ）。iPad の設定で「自動ロック：なし」にしておくとより確実です。</p>
+      <label class="switch"><input type="checkbox" id="wake"> 画面をつけたままにする <span class="muted small" id="wakeState"></span></label>
+    </div>
+    <div class="panel">
+      <h2>記録の書き出し</h2>
+      <p>番号・お名前・お預かり品・時刻を CSV で書き出します（写真は含みません）。電池切れや端末トラブルに備えて、披露宴の途中で一度控えておくと安心です。</p>
+      <div class="row">
+        <button class="btn" type="button" id="csvSave">CSV を保存</button>
+        <button class="btn" type="button" id="csvCopy">テキストをコピー</button>
+      </div>
+      <pre class="csv" id="csvOut" hidden></pre>
+    </div>
+    <div class="panel">
+      <h2>ホーム画面に追加</h2>
+      <p>Safari の共有ボタンから「ホーム画面に追加」しておくと、アプリのように全画面で開けます。記録はこの端末の中に保存され、通信がなくても使えます。</p>
+    </div>
+    <div class="panel">
+      <h2>すべての記録を消す</h2>
+      <p>式が終わり、すべてお返ししたあとに使ってください。お名前と写真を含むすべての記録が消え、元に戻せません。確認のため「削除」と入力してください。</p>
+      <div class="row">
+        <input class="text" id="wipeWord" placeholder="削除" style="max-width:160px">
+        <button class="btn danger" type="button" id="wipeBtn" disabled>すべて消す</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="overlay" id="ov" hidden></div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  "use strict";
+  const ITEMS = [["coat","コート"],["stole","ストール・羽織"],["umbrella","傘"],["paperbag","紙袋"],["bag","バッグ"],["other","その他"]];
+  const SIDE = { groom: "新郎側", bride: "新婦側", "": "" };
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const el = (tag, attrs = {}, kids = []) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "class") n.className = v; else if (k === "text") n.textContent = v;
+      else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else if (v !== false && v != null) n.setAttribute(k, v === true ? "" : v);
+    }
+    for (const c of [].concat(kids)) if (c != null) n.append(c);
+    return n;
+  };
+
+  /* ---------- storage: IndexedDB (fallback: memory) ---------- */
+  let idb = null;
+  const mem = { tickets: new Map(), photos: new Map(), meta: new Map() };
+  const keyOf = { tickets: "id", photos: "id", meta: "k" };
+  function openDB() {
+    return new Promise(res => {
+      try {
+        const r = indexedDB.open("cloak-ticket-v1", 1);
+        r.onupgradeneeded = () => { const d = r.result; for (const s of Object.keys(keyOf)) d.createObjectStore(s, { keyPath: keyOf[s] }); };
+        r.onsuccess = () => res(r.result); r.onerror = () => res(null); r.onblocked = () => res(null);
+        setTimeout(() => res(null), 4000);
+      } catch (e) { res(null); }
+    });
+  }
+  function run(store, mode, fn) {
+    if (!idb) return Promise.resolve(fn(null));
+    return new Promise((res, rej) => {
+      try {
+        const t = idb.transaction(store, mode); const s = t.objectStore(store); let out;
+        const r = fn(s); if (r && "onsuccess" in r) r.onsuccess = () => { out = r.result; };
+        t.oncomplete = () => res(out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+      } catch (e) { rej(e); }
+    });
+  }
+  const dbPut = (store, v) => idb ? run(store, "readwrite", s => s.put(v)) : (mem[store].set(v[keyOf[store]], v), Promise.resolve());
+  const dbDel = (store, k) => idb ? run(store, "readwrite", s => s.delete(k)) : (mem[store].delete(k), Promise.resolve());
+  const dbAll = store => idb ? run(store, "readonly", s => s.getAll()) : Promise.resolve([...mem[store].values()]);
+  const dbGet = (store, k) => idb ? run(store, "readonly", s => s.get(k)) : Promise.resolve(mem[store].get(k));
+  const dbClear = store => idb ? run(store, "readwrite", s => s.clear()) : (mem[store].clear(), Promise.resolve());
+
+  /* ---------- state ---------- */
+  const S = { tickets: new Map(), start: 1, lastIssued: 0, tab: "in", listF: "in", q: "" };
+  const draft = { name: "", side: "", items: {}, memo: "", photos: [] }; // photos: [{id, blob, url}]
+  const urlCache = new Map();
+  async function photoURL(id) {
+    if (urlCache.has(id)) return urlCache.get(id);
+    const p = await dbGet("photos", id).catch(() => null);
+    if (!p || !p.blob) return null;
+    const u = URL.createObjectURL(p.blob); urlCache.set(id, u); return u;
+  }
+  const nextNo = () => Math.max(S.lastIssued, S.start - 1) + 1;
+  const sorted = () => [...S.tickets.values()].sort((a, b) => a.id - b.id);
+  const itemText = t => ITEMS.filter(([k]) => t.items && t.items[k] > 0).map(([k, n]) => n + (t.items[k] > 1 ? "×" + t.items[k] : "")).join("・") || "品目なし";
+  const itemCount = t => Object.values(t.items || {}).reduce((a, b) => a + b, 0);
+  const fmtTime = ms => { if (!ms) return ""; const d = new Date(ms); return d.getHours() + ":" + String(d.getMinutes()).padStart(2, "0"); };
+
+  /* ---------- cloud backup (artifact db, optional) ---------- */
+  let cloud = null;
+  const syncEl = $("#sync");
+  function setSync(cls, text) { syncEl.className = "sync " + cls; syncEl.textContent = text; }
+  const plain = t => ({ id: t.id, name: t.name || "", side: t.side || "", items: t.items || {}, memo: t.memo || "", photoCount: (t.photos || []).length, createdAt: t.createdAt, returnedAt: t.returnedAt || 0, updatedAt: t.updatedAt });
+  async function pushCloud(t) {
+    if (!cloud) return;
+    try { await cloud.collection("tickets").doc(String(t.id)).set(plain(t)); setSync("on", "控えを自動バックアップ中"); }
+    catch (e) { setSync("err", "バックアップ未送信（端末には保存済）"); }
+  }
+  async function delCloud(id) { if (!cloud) return; try { await cloud.collection("tickets").doc(String(id)).delete(); } catch (e) {} }
+  async function initCloud() {
+    if (!window.claude || typeof window.claude.use !== "function") return;
+    let db = null;
+    try { db = await window.claude.use("db"); } catch (e) { db = null; }
+    if (!db) return;
+    cloud = db;
+    try {
+      const snap = await db.collection("tickets").get();
+      // 端末の記録が空（データ消去・別端末）なら、バックアップから文字情報だけ復元
+      if (S.tickets.size === 0 && !snap.empty) {
+        for (const d of snap.docs) {
+          const v = d.data(); if (!v || typeof v.id !== "number") continue;
+          const t = { id: v.id, name: v.name, side: v.side, items: v.items || {}, memo: v.memo, photos: [], createdAt: v.createdAt, returnedAt: v.returnedAt || null, updatedAt: v.updatedAt, restored: true };
+          S.tickets.set(t.id, t); await dbPut("tickets", t).catch(() => {});
+          S.lastIssued = Math.max(S.lastIssued, t.id);
+        }
+        await dbPut("meta", { k: "lastIssued", v: S.lastIssued }).catch(() => {});
+        toast("バックアップから " + snap.size + " 件を復元しました（写真なし）");
+        renderAll();
+      } else {
+        const remote = new Map(snap.docs.map(d => [Number(d.id), d.data()]));
+        for (const t of S.tickets.values()) { const r = remote.get(t.id); if (!r || (r.updatedAt || 0) < (t.updatedAt || 0)) await pushCloud(t); }
+      }
+      setSync("on", "控えを自動バックアップ中");
+    } catch (e) { setSync("err", "バックアップ未接続（端末には保存済）"); }
+  }
+
+  /* ---------- tabs ---------- */
+  function showTab(name) {
+    S.tab = name;
+    for (const b of $$("nav.tabs button")) b.setAttribute("aria-selected", String(b.dataset.tab === name));
+    for (const id of ["in", "out", "list", "admin"]) $("#tab-" + id).hidden = id !== name;
+    if (name === "out") { renderOut(); }
+    if (name === "list") renderList();
+    if (name === "admin") renderAdmin();
+    window.scrollTo(0, 0);
+  }
+  $$("nav.tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+  /* ---------- 預かる ---------- */
+  const itemsBox = $("#inItems");
+  function renderDraftItems() {
+    itemsBox.replaceChildren(...ITEMS.map(([k, n]) => {
+      const c = draft.items[k] || 0;
+      return el("div", { class: "counter" + (c ? " has" : "") }, [
+        el("span", { class: "nm", text: n }),
+        el("button", { type: "button", "aria-label": n + "を減らす", onclick: () => { draft.items[k] = Math.max(0, c - 1); renderDraftItems(); } }, "−"),
+        el("span", { class: "ct", text: String(c) }),
+        el("button", { type: "button", "aria-label": n + "を増やす", onclick: () => { draft.items[k] = c + 1; renderDraftItems(); } }, "＋"),
+      ]);
+    }));
+    const n = Object.values(draft.items).reduce((a, b) => a + b, 0);
+    const sb = $("#inSubmit");
+    sb.disabled = n === 0;
+    sb.textContent = n === 0 ? "お預かり品を選んでください" : `${nextNo()}番で登録する（${n}点）`;
+  }
+  function renderDraftPhotos() {
+    const box = $("#inPhotos"); const add = $("#addPhotoLbl");
+    box.replaceChildren(...draft.photos.map((p, i) => el("div", { class: "thumb" }, [
+      el("img", { src: p.url, alt: "お預かり品の写真" + (i + 1) }),
+      el("button", { type: "button", class: "x", "aria-label": "写真を外す", onclick: () => { URL.revokeObjectURL(p.url); draft.photos.splice(i, 1); renderDraftPhotos(); } }, "×"),
+    ])), add);
+    add.hidden = draft.photos.length >= 4;
+  }
+  function renderNext() { $("#nextNum").textContent = nextNo(); renderDraftItems(); }
+  $("#inName").addEventListener("input", e => draft.name = e.target.value);
+  $("#inMemo").addEventListener("input", e => draft.memo = e.target.value);
+  $$("#inSide button").forEach(b => b.addEventListener("click", () => {
+    draft.side = b.dataset.side; $$("#inSide button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+  }));
+
+  async function compress(file) {
+    const max = 1000;
+    let src = null, w, h, cleanup = () => {};
+    try { src = await createImageBitmap(file); w = src.width; h = src.height; cleanup = () => src.close && src.close(); }
+    catch (e) {
+      const u = URL.createObjectURL(file);
+      src = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = u; });
+      w = src.naturalWidth; h = src.naturalHeight; cleanup = () => URL.revokeObjectURL(u);
+    }
+    const s = Math.min(1, max / Math.max(w, h));
+    const c = document.createElement("canvas"); c.width = Math.round(w * s); c.height = Math.round(h * s);
+    c.getContext("2d").drawImage(src, 0, 0, c.width, c.height); cleanup();
+    return await new Promise(res => c.toBlob(b => res(b || file), "image/jpeg", 0.72));
+  }
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  async function takePhotoInto(input, onBlob) {
+    const f = input.files && input.files[0]; input.value = "";
+    if (!f) return;
+    try { onBlob(await compress(f)); } catch (e) { toast("写真を読み込めませんでした。もう一度撮影してください"); }
+  }
+  $("#inPhotoInput").addEventListener("change", e => takePhotoInto(e.target, blob => {
+    draft.photos.push({ id: newId(), blob, url: URL.createObjectURL(blob) }); renderDraftPhotos();
+  }));
+
+  $("#inForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    if (!itemCount(draft)) return;
+    const id = nextNo(); const now = Date.now();
+    const t = { id, name: draft.name.trim(), side: draft.side, items: { ...draft.items }, memo: draft.memo.trim(), photos: draft.photos.map(p => p.id), createdAt: now, returnedAt: null, updatedAt: now };
+    try {
+      for (const p of draft.photos) { await dbPut("photos", { id: p.id, blob: p.blob }); urlCache.set(p.id, p.url); }
+      await dbPut("tickets", t);
+      S.lastIssued = id; await dbPut("meta", { k: "lastIssued", v: id });
+    } catch (err) { toast("保存に失敗しました。もう一度お試しください"); return; }
+    S.tickets.set(id, t); pushCloud(t);
+    // reset draft
+    Object.assign(draft, { name: "", side: "", items: {}, memo: "", photos: [] });
+    $("#inName").value = ""; $("#inMemo").value = "";
+    $$("#inSide button").forEach(x => x.setAttribute("aria-pressed", String(x.dataset.side === "")));
+    renderDraftPhotos(); renderNext(); renderStats();
+    showIssued(t);
+  });
+
+  /* ---------- overlays ---------- */
+  const ov = $("#ov");
+  function openOverlay(node) { ov.replaceChildren(node); ov.hidden = false; }
+  function closeOverlay() { ov.hidden = true; ov.replaceChildren(); }
+  ov.addEventListener("click", e => { if (e.target === ov) closeOverlay(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !ov.hidden) closeOverlay(); });
+
+  function showIssued(t) {
+    openOverlay(el("div", { class: "sheet issued", role: "dialog", "aria-label": "控え番号" }, [
+      el("div", { class: "eyebrow", text: "お控え番号" }),
+      el("span", { class: "num", text: String(t.id) }),
+      t.name ? el("div", { class: "who", text: t.name + " 様" }) : null,
+      el("div", { class: "what", text: itemText(t) + "（計" + itemCount(t) + "点）" }),
+      el("div", { class: "steps" }, [
+        el("div", {}, [el("b", { text: "1. " }), "お客様に、この画面をスマートフォンで撮影していただくか、番号をお伝えください。"]),
+        el("div", {}, [el("b", { text: "2. " }), `お預かり品すべてに「${t.id}」の番号を貼ってください。`]),
+      ]),
+      el("button", { class: "btn primary big", type: "button", onclick: () => { closeOverlay(); $("#inName").focus(); } }, "次のお客様へ"),
+    ]));
+  }
+
+  async function showDetail(id) {
+    const t = S.tickets.get(id); if (!t) return;
+    const back = !!t.returnedAt;
+    const photosBox = el("div", { class: "bigphotos" });
+    for (const pid of t.photos || []) {
+      const u = await photoURL(pid);
+      if (u) photosBox.append(el("img", { src: u, alt: "お預かり品の写真", onclick: () => zoom(u, id) }));
+    }
+    if (!photosBox.childElementCount) photosBox.append(el("p", { class: "hint", text: t.restored ? "バックアップから復元した記録のため写真はありません。" : "写真はありません。" }));
+    const add = el("label", { class: "btn" }, ["写真を追加", el("input", { type: "file", accept: "image/*", capture: "environment", style: "position:absolute;width:1px;height:1px;opacity:0", onchange: e => takePhotoInto(e.target, async blob => {
+      const pid = newId(); await dbPut("photos", { id: pid, blob }).catch(() => {}); t.photos = [...(t.photos || []), pid]; await save(t); showDetail(id);
+    }) })]);
+    add.style.position = "relative";
+
+    const nameIn = el("input", { class: "text", id: "dName", value: t.name || "", placeholder: "お名前（任意）" });
+    nameIn.addEventListener("change", async () => { t.name = nameIn.value.trim(); await save(t); });
+    const memoIn = el("textarea", { class: "text", id: "dMemo", placeholder: "特徴メモ" }); memoIn.value = t.memo || "";
+    memoIn.addEventListener("change", async () => { t.memo = memoIn.value.trim(); await save(t); });
+
+    const del = el("button", { class: "btn danger", type: "button" }, "誤登録を削除");
+    del.addEventListener("click", async () => {
+      if (!del.classList.contains("armed")) { del.classList.add("armed"); del.textContent = "もう一度押すと削除"; return; }
+      for (const pid of t.photos || []) await dbDel("photos", pid).catch(() => {});
+      await dbDel("tickets", t.id).catch(() => {}); S.tickets.delete(t.id); delCloud(t.id);
+      closeOverlay(); toast(t.id + "番を削除しました"); renderAll();
+    });
+
+    openOverlay(el("div", { class: "sheet", role: "dialog", "aria-label": t.id + "番の詳細" }, [
+      el("div", { class: "detail-h" }, [
+        el("span", { class: "num", text: String(t.id) }),
+        el("div", {}, [
+          el("div", { style: "font-weight:700;font-size:1.2rem", text: (t.name ? t.name + " 様" : "お名前未入力") }),
+          el("div", { class: "row", style: "gap:6px" }, [
+            t.side ? el("span", { class: "chip " + t.side, text: SIDE[t.side] }) : null,
+            back ? el("span", { class: "chip back", text: "お返し済 " + fmtTime(t.returnedAt) }) : el("span", { class: "chip", text: "お預かり中" }),
+          ]),
+        ]),
+      ]),
+      el("div", { style: "margin-top:12px;font-weight:700", text: itemText(t) + "（計" + itemCount(t) + "点）" }),
+      photosBox,
+      el("div", { class: "dgrid" }, [
+        el("div", { class: "field" }, [el("label", { class: "label", for: "dName", text: "お名前" }), nameIn]),
+        el("div", { class: "field" }, [el("label", { class: "label", for: "dMemo", text: "特徴メモ" }), memoIn]),
+        el("div", { class: "times" }, [el("span", { text: "お預かり " + fmtTime(t.createdAt) }), back ? el("span", { text: "お返し " + fmtTime(t.returnedAt) }) : null]),
+      ]),
+      el("div", { class: "actions" }, [
+        back
+          ? el("button", { class: "btn grow", type: "button", onclick: async () => { t.returnedAt = null; await save(t); toast(t.id + "番をお預かり中に戻しました"); showDetail(id); } }, "お返しを取り消す")
+          : el("button", { class: "btn ok big grow", type: "button", onclick: async () => {
+              t.returnedAt = Date.now(); await save(t); closeOverlay(); toast(t.id + "番をお返ししました");
+              if (S.tab === "out") { $("#q").value = ""; S.q = ""; renderOut(); }
+            } }, `${itemCount(t)}点を確認してお返し完了`),
+        add,
+        el("button", { class: "btn", type: "button", onclick: closeOverlay }, "閉じる"),
+        del,
+      ]),
+    ]));
+  }
+  function zoom(u, backId) {
+    openOverlay(el("div", { class: "sheet zoom" }, [
+      el("img", { src: u, alt: "お預かり品の写真（拡大）" }),
+      el("div", { class: "actions" }, [el("button", { class: "btn grow", type: "button", onclick: () => showDetail(backId) }, "戻る")]),
+    ]));
+  }
+  async function save(t) {
+    t.updatedAt = Date.now();
+    try { await dbPut("tickets", t); } catch (e) { toast("保存に失敗しました"); }
+    S.tickets.set(t.id, t); pushCloud(t); renderAll();
+  }
+
+  /* ---------- cards ---------- */
+  function card(t) {
+    const pic = el("span", { class: "pic", text: (t.photos || []).length ? "" : "写真なし" });
+    if ((t.photos || []).length) photoURL(t.photos[0]).then(u => { if (u) pic.replaceChildren(el("img", { src: u, alt: "" })); else pic.textContent = "写真なし"; });
+    return el("button", { type: "button", class: "card" + (t.returnedAt ? " returned" : ""), onclick: () => showDetail(t.id), "aria-label": t.id + "番 " + (t.name || "") }, [
+      el("span", { class: "cnum num", text: String(t.id) }),
+      el("span", {}, [
+        el("span", { class: "who", style: "display:block", text: t.name ? t.name + " 様" : "お名前なし" }),
+        el("span", { class: "row", style: "gap:6px" }, [
+          t.side ? el("span", { class: "chip " + t.side, text: SIDE[t.side] }) : null,
+          t.returnedAt ? el("span", { class: "chip back", text: "お返し済" }) : null,
+        ]),
+        el("span", { class: "what", style: "display:block", text: itemText(t) + (t.memo ? "／" + t.memo : "") }),
+      ]),
+      pic,
+    ]);
+  }
+  function grid(list) { return el("div", { class: "results" }, list.map(card)); }
+  function emptyBox(title, sub) { return el("div", { class: "empty" }, [el("strong", { text: title }), sub]); }
+
+  /* ---------- お返し ---------- */
+  const kana = s => (s || "").normalize("NFKC").toLowerCase().replace(/[ァ-ヶ]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)).replace(/\s|様|さま/g, "");
+  function search(q) {
+    const n = (q || "").normalize("NFKC").trim();
+    const all = sorted();
+    if (!n) return { exact: null, hits: all.filter(t => !t.returnedAt) };
+    if (/^\d+$/.test(n)) {
+      const id = Number(n); const exact = S.tickets.get(id) || null;
+      const hits = all.filter(t => t.id !== id && String(t.id).startsWith(n));
+      return { exact, hits };
+    }
+    const k = kana(n);
+    const hits = all.filter(t => kana(t.name).includes(k) || kana(t.memo).includes(k) || kana(SIDE[t.side]).includes(k) || kana(itemText(t)).includes(k));
+    hits.sort((a, b) => (!!a.returnedAt - !!b.returnedAt) || a.id - b.id);
+    return { exact: null, hits };
+  }
+  function renderOut() {
+    const box = $("#outResults"); const q = S.q.trim();
+    if (S.tickets.size === 0) { box.replaceChildren(emptyBox("まだお預かりはありません", "「預かる」タブで登録すると、ここで番号やお名前から探せます。")); return; }
+    const { exact, hits } = search(q);
+    const parts = [];
+    if (exact) parts.push(el("h2", { class: "section-h", text: q + "番" }), grid([exact]));
+    else if (/^\d+$/.test(q)) parts.push(emptyBox(q + "番は登録がありません", "番号の聞き間違いがないか、お名前でもお探しください。"));
+    if (hits.length) parts.push(el("h2", { class: "section-h" }, [q ? (exact ? "近い番号" : "該当") : "お預かり中のすべて", el("span", { class: "muted small", text: hits.length + "件" })]), grid(hits));
+    else if (!exact && q && !/^\d+$/.test(q)) parts.push(emptyBox("「" + q + "」に当てはまる記録はありません", "ひらがな・カタカナどちらでも探せます。特徴メモの言葉でも検索できます。"));
+    else if (!q) parts.push(emptyBox("お預かり中の品はありません", "すべてお返し済みです。"));
+    box.replaceChildren(...parts);
+  }
+  const qIn = $("#q");
+  qIn.addEventListener("input", () => { S.q = qIn.value; renderOut(); });
+  $("#qClear").addEventListener("click", () => { qIn.value = ""; S.q = ""; renderOut(); });
+  $("#keypad").replaceChildren(...["1","2","3","4","5","6","7","8","9","0","⌫","クリア"].map(k => el("button", {
+    type: "button", class: k.length > 1 || k === "⌫" ? "fn" : "", "aria-label": k === "⌫" ? "1文字消す" : k,
+    onclick: () => {
+      let v = /^\d*$/.test(qIn.value) ? qIn.value : "";
+      if (k === "⌫") v = v.slice(0, -1); else if (k === "クリア") v = ""; else v = (v + k).slice(0, 4);
+      qIn.value = v; S.q = v; renderOut();
+    },
+  }, k)));
+
+  /* ---------- 一覧 ---------- */
+  $$("#listFilter button").forEach(b => b.addEventListener("click", () => {
+    S.listF = b.dataset.f; $$("#listFilter button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); renderList();
+  }));
+  function renderList() {
+    const all = sorted();
+    const list = S.listF === "in" ? all.filter(t => !t.returnedAt) : S.listF === "out" ? all.filter(t => t.returnedAt) : all;
+    const box = $("#listResults");
+    if (!all.length) { box.replaceChildren(emptyBox("まだお預かりはありません", "「預かる」タブで1組目を登録してください。")); return; }
+    if (!list.length) { box.replaceChildren(emptyBox(S.listF === "in" ? "お預かり中の品はありません" : "まだお返しした記録はありません", S.listF === "in" ? "すべてお返し済みです。お疲れさまでした。" : "")); return; }
+    const pts = list.reduce((a, t) => a + itemCount(t), 0);
+    box.replaceChildren(el("p", { class: "muted small", style: "margin:14px 0 0", text: `${list.length}組・${pts}点` }), grid(list));
+  }
+
+  /* ---------- 管理 ---------- */
+  function renderAdmin() {
+    const si = $("#startNum"); si.value = S.start; si.disabled = S.tickets.size > 0 || S.lastIssued > 0; $("#startSave").disabled = si.disabled;
+  }
+  $("#startSave").addEventListener("click", async () => {
+    const v = Math.max(1, Math.floor(Number($("#startNum").value) || 1));
+    S.start = v; await dbPut("meta", { k: "start", v }).catch(() => {}); renderNext(); toast(v + "番から発行します");
+  });
+  function csv() {
+    const q = s => '"' + String(s ?? "").replace(/"/g, '""') + '"';
+    const rows = [["番号","お名前","区分","お預かり品","点数","特徴メモ","お預かり時刻","お返し時刻"]];
+    for (const t of sorted()) rows.push([t.id, t.name, SIDE[t.side] || "", itemText(t), itemCount(t), t.memo, fmtTime(t.createdAt), fmtTime(t.returnedAt)]);
+    return rows.map(r => r.map(q).join(",")).join("\r\n");
+  }
+  const stamp = () => { const d = new Date(); return d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0") + "-" + String(d.getHours()).padStart(2, "0") + String(d.getMinutes()).padStart(2, "0"); };
+  function showCsvText() { const p = $("#csvOut"); p.textContent = csv(); p.hidden = false; return p; }
+  $("#csvSave").addEventListener("click", async () => {
+    const data = "﻿" + csv(); const filename = "cloak-" + stamp() + ".csv";
+    let dl = null;
+    try { dl = window.claude && window.claude.use ? await window.claude.use("downloads") : null; } catch (e) {}
+    if (dl) {
+      try { await dl.save({ filename, data }); toast("CSV を保存しました"); } catch (e) { if (e && e.code !== "declined") { showCsvText(); toast("保存できませんでした。下のテキストをコピーしてください"); } }
+      return;
+    }
+    try { const a = el("a", { href: URL.createObjectURL(new Blob([data], { type: "text/csv" })), download: filename }); document.body.append(a); a.click(); a.remove(); }
+    catch (e) { showCsvText(); }
+  });
+  $("#csvCopy").addEventListener("click", () => {
+    const text = csv();
+    const fallback = () => { const p = showCsvText(); const r = document.createRange(); r.selectNodeContents(p); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("選択しました。コピーしてメモ等に貼り付けてください"); };
+    try { navigator.clipboard.writeText(text).then(() => toast("コピーしました。メモアプリ等に貼り付けてください"), fallback); } catch (e) { fallback(); }
+  });
+  const wipeWord = $("#wipeWord");
+  wipeWord.addEventListener("input", () => $("#wipeBtn").disabled = wipeWord.value.trim() !== "削除");
+  $("#wipeBtn").addEventListener("click", async () => {
+    const ids = [...S.tickets.keys()];
+    await dbClear("tickets").catch(() => {}); await dbClear("photos").catch(() => {}); await dbClear("meta").catch(() => {});
+    for (const id of ids) delCloud(id);
+    for (const u of urlCache.values()) URL.revokeObjectURL(u); urlCache.clear();
+    S.tickets.clear(); S.lastIssued = 0; S.start = 1; wipeWord.value = ""; $("#wipeBtn").disabled = true; $("#csvOut").hidden = true;
+    renderAll(); renderAdmin(); toast("すべての記録を消しました");
+  });
+
+  // wake lock
+  let lock = null;
+  async function wantLock() {
+    const st = $("#wakeState");
+    if (!$("#wake").checked) { try { lock && await lock.release(); } catch (e) {} lock = null; st.textContent = ""; return; }
+    try { lock = await navigator.wakeLock.request("screen"); st.textContent = "（作動中）"; lock.addEventListener("release", () => { if (!$("#wake").checked) st.textContent = ""; }); }
+    catch (e) { st.textContent = "（この端末では使えません。iPadの自動ロックを「なし」にしてください）"; }
+  }
+  $("#wake").addEventListener("change", wantLock);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && $("#wake").checked) wantLock(); });
+
+  /* ---------- misc ---------- */
+  let toastT = 0;
+  function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2600); }
+  function renderStats() {
+    let a = 0, b = 0; for (const t of S.tickets.values()) t.returnedAt ? b++ : a++;
+    $("#stIn").textContent = a; $("#stOut").textContent = b;
+  }
+  function renderAll() { renderStats(); renderNext(); if (S.tab === "out") renderOut(); if (S.tab === "list") renderList(); }
+
+  async function boot() {
+    idb = await openDB();
+    if (!idb) $("#storeWarn").hidden = false;
+    try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+    try {
+      for (const t of await dbAll("tickets")) S.tickets.set(t.id, t);
+      for (const m of await dbAll("meta")) { if (m.k === "start") S.start = m.v; if (m.k === "lastIssued") S.lastIssued = m.v; }
+    } catch (e) { $("#storeWarn").hidden = false; }
+    for (const t of S.tickets.values()) S.lastIssued = Math.max(S.lastIssued, t.id);
+    renderDraftPhotos(); renderAll();
+    initCloud();
+  }
+  boot();
+})();
+</script>
+
+</body></html>

@@ -62,7 +62,8 @@ body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-a
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
 }
 .top-inner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding-block: 12px 0; }
-.brand { font-family: var(--font-display); font-weight: 800; font-size: 1.35rem; margin: 0; letter-spacing: .06em; }
+.brand { font-family: var(--font-display); font-weight: 800; font-size: 1.35rem; margin: 0; letter-spacing: .06em; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+.brand.pressing { opacity: .55; transition: opacity 1.5s linear; }
 .stats { display: flex; gap: 14px; margin-left: auto; font-size: .9rem; color: var(--muted); align-items: baseline; flex-wrap: wrap; }
 .stats b { font-family: var(--font-display); font-size: 1.4rem; color: var(--ink); font-variant-numeric: tabular-nums; margin: 0 2px; }
 .sync { font-size: .78rem; padding: 2px 10px; border-radius: 99px; background: var(--sunken); color: var(--muted); }
@@ -214,7 +215,7 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
       <button role="tab" data-tab="in" aria-selected="true">預かる</button>
       <button role="tab" data-tab="out" aria-selected="false">お返し</button>
       <button role="tab" data-tab="list" aria-selected="false">一覧</button>
-      <button role="tab" data-tab="admin" aria-selected="false">管理</button>
+      <button role="tab" data-tab="admin" aria-selected="false" id="adminTabBtn" hidden>管理</button>
     </nav>
   </div>
 </header>
@@ -482,9 +483,27 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
     if (name === "out") { renderOut(); }
     if (name === "list") renderList();
     if (name === "admin") renderAdmin();
+    // 管理タブは離れたら自動で隠す（誤操作防止）
+    if (name !== "admin") $("#adminTabBtn").hidden = true;
     window.scrollTo(0, 0);
   }
   $$("nav.tabs button").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+  // タイトル「クローク控え帳」を約2秒長押しすると管理タブを開く
+  (() => {
+    const brand = $(".brand"); let timer = 0;
+    const cancel = () => { clearTimeout(timer); timer = 0; brand.classList.remove("pressing"); };
+    brand.addEventListener("pointerdown", e => {
+      cancel(); brand.classList.add("pressing");
+      timer = setTimeout(() => {
+        cancel();
+        $("#adminTabBtn").hidden = false; showTab("admin");
+        toast("管理タブを開きました（ほかのタブに移ると自動で隠れます）");
+      }, 2000);
+    });
+    for (const ev of ["pointerup", "pointerleave", "pointercancel"]) brand.addEventListener(ev, cancel);
+    brand.addEventListener("contextmenu", e => e.preventDefault());
+  })();
 
   /* ---------- 預かる ---------- */
   const itemsBox = $("#inItems");

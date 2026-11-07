@@ -241,6 +241,7 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
       <div class="field">
         <span class="label">お預かり品</span>
         <div class="items" id="inItems"></div>
+        <p class="hint">羽織・ストール・ブランケットも「トップス」に入れてください。</p>
       </div>
       <div class="field">
         <label class="label" for="inMemo">特徴メモ（任意）</label>
@@ -338,7 +339,10 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
 <script>
 (() => {
   "use strict";
-  const ITEMS = [["coat","コート"],["stole","ストール・羽織"],["paperbag","紙袋"],["bag","バッグ"],["other","その他"]];
+  const ITEMS = [["tops","トップス"],["hat","帽子"],["shoes","靴"],["bag","カバン"],["parasol","日傘"],["other","その他"]];
+  // 以前の品目キーを新しい大分類へ読み替える（既存の記録を壊さないため）
+  const LEGACY = { coat: "tops", stole: "tops", paperbag: "bag", umbrella: "other" };
+  const normalizeItems = items => { const out = {}; for (const [k, v] of Object.entries(items || {})) { const nk = LEGACY[k] || k; out[nk] = (out[nk] || 0) + (Number(v) || 0); } return out; };
   const SIDE = { groom: "新郎側", bride: "新婦側", "": "" };
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -454,7 +458,7 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
       if (S.tickets.size === 0 && !snap.empty) {
         for (const d of snap.docs) {
           const v = d.data(); if (!v || typeof v.id !== "number") continue;
-          const t = { id: v.id, name: v.name, side: v.side, items: v.items || {}, memo: v.memo, photos: [], createdAt: v.createdAt, returnedAt: v.returnedAt || null, updatedAt: v.updatedAt, restored: true };
+          const t = { id: v.id, name: v.name, side: v.side, items: normalizeItems(v.items), memo: v.memo, photos: [], createdAt: v.createdAt, returnedAt: v.returnedAt || null, updatedAt: v.updatedAt, restored: true };
           S.tickets.set(t.id, t); await dbPut("tickets", t).catch(() => {});
           S.lastIssued = Math.max(S.lastIssued, t.id);
         }
@@ -838,7 +842,7 @@ pre.csv { white-space: pre-wrap; word-break: break-all; background: var(--bg); b
     if (!idb) $("#storeWarn").hidden = false;
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     try {
-      for (const t of await dbAll("tickets")) S.tickets.set(t.id, t);
+      for (const t of await dbAll("tickets")) { t.items = normalizeItems(t.items); S.tickets.set(t.id, t); }
       for (const m of await dbAll("meta")) { if (m.k === "start") S.start = m.v; if (m.k === "lastIssued") S.lastIssued = m.v; }
     } catch (e) { $("#storeWarn").hidden = false; }
     for (const t of S.tickets.values()) S.lastIssued = Math.max(S.lastIssued, t.id);

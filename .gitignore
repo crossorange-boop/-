@@ -1,0 +1,6 @@
+node_modules/
+# 認証情報・個人環境ファイルは絶対にコミットしない
+.clasprc.json
+.clasp.json
+*.secret.*
+.env

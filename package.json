@@ -1,0 +1,14 @@
+{
+  "name": "ai-control-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI統合管制システム（Google Apps Script + Google Sheets）",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "push": "clasp push",
+    "deploy": "clasp deploy"
+  },
+  "devDependencies": {
+    "@google/clasp": "3.4.1"
+  }
+}

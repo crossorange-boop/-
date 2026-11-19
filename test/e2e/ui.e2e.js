@@ -12,7 +12,9 @@ const BASE = 'http://localhost:' + PORT;
 const outDir = process.argv[2] || null;
 
 async function main() {
-  const server = spawn('node', [path.join(__dirname, '../../tools/preview-server.js'), String(PORT)], { stdio: 'pipe' });
+  // E2E_BUNDLE=1 のときはブラウザ導入用のまとめファイル（dist/）で検証する
+  const serverArgs = [path.join(__dirname, '../../tools/preview-server.js'), String(PORT)].concat(process.env.E2E_BUNDLE ? ['--bundle'] : []);
+  const server = spawn('node', serverArgs, { stdio: 'pipe' });
   await new Promise((res) => server.stdout.once('data', res));
   const browser = await chromium.launch();
   const errors = [];

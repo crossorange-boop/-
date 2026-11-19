@@ -7,6 +7,7 @@
     "test": "node --test \"test/**/*.test.js\"",
     "e2e": "node test/e2e/ui.e2e.js",
     "preview": "node tools/preview-server.js 8787",
+    "build": "node tools/build-bundle.js",
     "push": "clasp push",
     "deploy": "clasp deploy"
   },

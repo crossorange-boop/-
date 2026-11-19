@@ -1,18 +1,20 @@
 /**
  * ローカルプレビュー用サーバー（開発専用・GASには反映しない）。
  * src/*.gs を模擬GAS環境で実行し、google.script.run の代わりに HTTP で api() を呼ぶ。
- *   node tools/preview-server.js [port] [--empty]
+ *   node tools/preview-server.js [port] [--empty] [--bundle]
  */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { loadGas } = require('../test/gas-loader');
+const { loadGas, loadBundle } = require('../test/gas-loader');
 const { createGasMocks } = require('../test/gas-mocks');
 const { seedDemo } = require('./demo-data');
 
 const port = Number(process.argv[2]) || 8787;
 const mocks = createGasMocks();
-const g = loadGas(mocks.globals);
+// --bundle：ブラウザ導入用のまとめファイル（dist/）で動かす
+const useBundle = process.argv.includes('--bundle');
+const g = useBundle ? loadBundle(mocks.globals) : loadGas(mocks.globals);
 g.Setup.run();
 if (!process.argv.includes('--empty')) seedDemo(g);
 
@@ -49,7 +51,8 @@ http.createServer((req, res) => {
     });
     return;
   }
-  const html = renderTemplate('ui/index').replace('<head>', '<head>' + SHIM);
+  const page = useBundle ? fs.readFileSync(path.join(__dirname, '..', 'dist', 'ui_index.html'), 'utf8') : renderTemplate('ui/index');
+  const html = page.replace('<head>', '<head>' + SHIM);
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(html);
 }).listen(port, () => console.log('preview: http://localhost:' + port));

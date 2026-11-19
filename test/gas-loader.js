@@ -17,4 +17,12 @@ function loadGas(extraGlobals = {}, files = null) {
   return context;
 }
 
-module.exports = { loadGas };
+/** まとめファイル（dist/Code.gs）を読み込む */
+function loadBundle(extraGlobals = {}) {
+  const code = fs.readFileSync(path.join(__dirname, '..', 'dist', 'Code.gs'), 'utf8');
+  const context = vm.createContext({ console, Date, Math, JSON, ...extraGlobals });
+  vm.runInContext(code, context, { filename: 'Code.gs' });
+  return context;
+}
+
+module.exports = { loadGas, loadBundle };

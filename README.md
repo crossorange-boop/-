@@ -13,7 +13,8 @@ Google Apps Script + Google Sheets で動作し、追加の有料サービスは
 | 1 | GASプロジェクト雛形・設定・共通関数 | 完了 |
 | 2 | セットアップ（シート自動作成・既存データ保護） | 完了 |
 | 3 | データ管理（リポジトリ・各サービス・状態遷移・権限） | 完了 |
-| 4〜11 | 設計書 11章参照 | 未着手 |
+| 4 | Webアプリ基本画面・ダッシュボード・API窓口 | 完了 |
+| 5〜11 | 設計書 11章参照 | 未着手 |
 
 ## テスト（ローカル）
 
@@ -30,4 +31,12 @@ npm install
 npx clasp login
 npx clasp create --type standalone --title "AI統合管制システム" --rootDir src
 npx clasp push
+```
+
+## 画面のローカルプレビュー（開発用）
+
+サンプルデータ入りの模擬環境で画面を確認できます（Googleには接続しません）。
+
+```bash
+node tools/preview-server.js 8787
 ```

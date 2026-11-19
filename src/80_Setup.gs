@@ -166,6 +166,8 @@ var Setup = (function () {
 
 /** Apps Script エディタから実行する入口 */
 function setupSystem() {
+  // 2回目以降はオーナーのみ実行可能（google.script.run から他の利用者が呼べないようにする）
+  if (PropertiesService.getScriptProperties().getProperty(Config.PROP_KEYS.OWNER_EMAIL)) Auth.require('OWNER');
   var report = Setup.run();
   Logger.log(JSON.stringify(report, null, 2));
   return report;

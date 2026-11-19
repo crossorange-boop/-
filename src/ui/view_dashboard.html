@@ -1,0 +1,98 @@
+<script>
+/** A. 総合ダッシュボード */
+(function () {
+  var esc = App.esc;
+  var GROUP_COLORS = { NOT_STARTED: 'var(--series-1)', IN_PROGRESS: 'var(--series-2)', ON_HOLD: 'var(--series-4)', COMPLETED: 'var(--series-3)' };
+  var ACTION_LABEL = {
+    CREATE: '登録', UPDATE: '更新', DELETE: '削除', STATUS_CHANGE: '状態変更', APPROVE: '承認', REJECT: '差し戻し',
+    SETUP: 'セットアップ', RESTORE: '復元'
+  };
+  var ENTITY_LABEL = { Projects: 'プロジェクト', Tasks: 'タスク', Agents: 'AI', Deliverables: '成果物', Approvals: '承認',
+    Settings: '設定', System: 'システム', Task: 'タスク' };
+
+  function kpi(label, value, note, href, alert) {
+    var tag = href ? 'a' : 'div';
+    return '<' + tag + ' class="card kpi-tile' + (alert ? ' alert' : '') + '"' + (href ? ' href="' + href + '"' : '') + '>' +
+      '<div class="label">' + esc(label) + '</div><div class="value num">' + esc(value) + '</div>' +
+      (note ? '<div class="note">' + esc(note) + '</div>' : '') + '</' + tag + '>';
+  }
+
+  function statusCard(s) {
+    var total = s.task_count;
+    var segs = s.groups.filter(function (g) { return g.count > 0; }).map(function (g) {
+      return '<div class="seg" style="flex:' + g.count + ';background:' + GROUP_COLORS[g.key] + '" data-tip="' +
+        esc(g.label + '：' + g.count + '件（' + Math.round(g.count / total * 100) + '%）') + '"></div>';
+    }).join('');
+    var legend = s.groups.map(function (g) {
+      var detail = g.statuses.map(function (st) { return App.statusLabel(st) + ' ' + s.by_status[st]; }).join('・');
+      return '<a class="legend-item" style="text-decoration:none" href="#/tasks?status=' + g.statuses.join(',') + '">' +
+        '<span class="swatch" style="background:' + GROUP_COLORS[g.key] + '"></span>' +
+        '<span>' + esc(g.label) + '<span class="detail">' + esc(detail) + '</span></span>' +
+        '<span class="v num">' + g.count + '</span></a>';
+    }).join('');
+    return '<div class="card"><h2>タスクの状態 <span class="sub">キャンセルを除く ' + total + '件</span></h2>' +
+      (total ? '<div class="stack" role="img" aria-label="タスク状態の内訳">' + segs + '</div>' : '<div class="stack empty"></div>') +
+      '<div class="legend">' + legend + '</div></div>';
+  }
+
+  function agentCard(s) {
+    var max = Math.max.apply(null, s.agents.map(function (a) { return a.active_task_count; }).concat([1]));
+    var rows = s.agents.map(function (a) {
+      var state = !a.enabled ? '停止中' : a.usable ? '利用可能' : (a.availability !== 'AVAILABLE' ? '利用不可' : '制限中');
+      return '<div class="hbar" data-tip="' + esc(a.agent_name + '：担当中 ' + a.active_task_count + '件／' + state) + '">' +
+        '<div class="name"><span class="dot ' + (a.usable ? 'ok' : 'ng') + '" aria-hidden="true"></span>' +
+        '<a href="#/agents?id=' + encodeURIComponent(a.agent_id) + '" style="color:inherit;text-decoration:none">' + esc(a.agent_name) + '</a>' +
+        (a.usable ? '' : '<span class="chip warn">' + esc(state) + '</span>') + '</div>' +
+        '<div class="track"><div class="fill" style="width:' + (a.active_task_count / max * 100) + '%"></div></div>' +
+        '<div class="v num">' + a.active_task_count + '</div></div>';
+    }).join('');
+    return '<div class="card"><h2>AI別 担当件数 <span class="sub">対応中のタスク</span></h2>' + rows +
+      (s.unassigned_count ? '<div class="muted" style="margin-top:8px;font-size:12px">担当未設定：' + s.unassigned_count + '件</div>' : '') + '</div>';
+  }
+
+  function taskList(title, sub, items, emptyText, chipClass) {
+    var body = items.length ? '<ul class="list">' + items.map(function (t) {
+      return '<li><a class="row" href="#/tasks?id=' + encodeURIComponent(t.task_id) + '"><div class="grow">' +
+        '<div class="title">' + esc(t.task_name) + '</div>' +
+        '<div class="meta">' + esc(t.project_name) + ' ・ ' + esc(t.status_label) + '</div></div>' +
+        '<span class="chip ' + chipClass + '">' + App.icon(chipClass === 'critical' ? 'alert' : 'clock') + ' ' + App.fmtDate(t.deadline, true) + '</span></a></li>';
+    }).join('') + '</ul>' : '<div class="empty-state">' + esc(emptyText) + '</div>';
+    return '<div class="card"><h2>' + esc(title) + ' <span class="sub">' + esc(sub) + '</span></h2>' + body + '</div>';
+  }
+
+  function activityCard(s) {
+    var items = s.recent_activity.map(function (a) {
+      var label = a.kind === 'EXECUTION' ? '自動処理：' + a.action + (a.result ? '（' + a.result + '）' : '')
+        : a.action === 'STATUS_CHANGE' && a.to_status ? '状態を「' + App.statusLabel(a.to_status) + '」に変更'
+        : (ENTITY_LABEL[a.entity_type] || a.entity_type) + 'を' + (ACTION_LABEL[a.action] || a.action);
+      var who = a.user === 'SYSTEM' ? '自動処理' : String(a.user || '').split('@')[0];
+      return '<li><div class="grow"><div class="title">' + esc(a.entity_name || label) + '</div><div class="meta">' + esc(a.entity_name ? label : (a.entity_id || '')) + ' ・ ' + esc(who) + '</div></div>' +
+        '<span class="meta num" style="white-space:nowrap">' + App.fmtDate(a.time, true) + '</span></li>';
+    }).join('');
+    return '<div class="card"><h2>直近の活動履歴</h2>' + (items ? '<ul class="list">' + items + '</ul>' : '<div class="empty-state">まだ履歴はありません</div>') + '</div>';
+  }
+
+  App.registerView('dashboard', {
+    title: 'ダッシュボード',
+    render: function (el) {
+      return App.call('dashboard.summary').then(function (s) {
+        App.updateCounts(s);
+        el.innerHTML =
+          '<div class="grid kpi">' +
+            kpi('プロジェクト', s.project_count, '進行中 ' + s.active_project_count, '#/projects') +
+            kpi('タスク', s.task_count, 'キャンセルを除く', '#/tasks') +
+            kpi('期限超過', s.overdue_count, s.overdue_count ? '要対応' : '問題なし', '#/tasks?overdue=1', s.overdue_count > 0) +
+            kpi('要承認', s.pending_approval_count, '承認待ちの依頼', '#/approvals', s.pending_approval_count > 0) +
+          '</div>' +
+          '<div class="grid two section">' + statusCard(s) + agentCard(s) + '</div>' +
+          '<div class="grid two section">' +
+            taskList('期限超過タスク', s.overdue_count + '件', s.overdue, '期限超過のタスクはありません', 'critical') +
+            taskList('期限が近いタスク', s.deadline_warning_hours + '時間以内', s.due_soon, '期限が近いタスクはありません', 'warn') +
+          '</div>' +
+          '<div class="section">' + activityCard(s) + '</div>';
+        // 活動履歴は直近10件（全件は「設定・ログ」画面）
+      });
+    }
+  });
+})();
+</script>

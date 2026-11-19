@@ -1,0 +1,61 @@
+<script>
+/** 共通画面：スマホ用メニュー、通知、未実装画面の仮表示 */
+(function () {
+  var esc = App.esc;
+
+  App.registerView('menu', {
+    title: 'メニュー',
+    render: function (el) {
+      el.innerHTML = '<div class="card"><ul class="list">' + App.NAV.map(function (n) {
+        return '<li><a class="row" href="#/' + n.route + '" style="align-items:center"><span style="width:22px;display:inline-flex">' + App.icon(n.icon) + '</span>' +
+          '<span class="grow title">' + esc(n.label) + '</span></a></li>';
+      }).join('') + '</ul></div>' +
+      '<p class="muted" style="font-size:12px;margin-top:12px">' + esc(App.state.boot.user.email) + '（' + esc(App.state.boot.user.role) + '）／v' + esc(App.state.boot.version) + '</p>';
+    }
+  });
+
+  App.registerView('notifications', {
+    title: '通知',
+    render: function (el) {
+      return App.call('notifications.list', { limit: 100 }).then(function (list) {
+        var unread = list.filter(function (n) { return n.read_status === 'UNREAD'; });
+        App.setActions(unread.length ? '<button class="btn" id="btn-read-all">すべて既読</button>' : '');
+        el.innerHTML = '<div class="card">' + (list.length ? '<ul class="list">' + list.map(function (n) {
+          var cls = n.severity === 'CRITICAL' ? 'critical' : n.severity === 'WARN' ? 'warn' : '';
+          return '<li style="' + (n.read_status === 'UNREAD' ? '' : 'opacity:.6') + '"><div class="grow"><div class="title">' + esc(n.message) + '</div>' +
+            '<div class="meta">' + App.fmtDate(n.created_at, true) + ' ・ ' + esc(n.notification_type) +
+            (n.task_id ? ' ・ <a href="#/tasks?id=' + encodeURIComponent(n.task_id) + '">タスクを開く</a>' : '') + '</div></div>' +
+            (cls ? '<span class="chip ' + cls + '">' + (cls === 'critical' ? '重要' : '注意') + '</span>' : '') + '</li>';
+        }).join('') + '</ul>' : '<div class="empty-state">通知はありません</div>') + '</div>';
+        var btn = document.getElementById('btn-read-all');
+        if (btn) btn.addEventListener('click', function () {
+          App.call('notifications.markRead', { ids: unread.map(function (n) { return n.notification_id; }).join(',') })
+            .then(function () { App.state.unread = 0; App.toast('既読にしました'); App.render(); })
+            .catch(App.showError);
+        });
+      });
+    }
+  });
+
+  var PLANNED = {
+    projects: ['プロジェクト', 'STEP 5'], tasks: ['タスク', 'STEP 5'], queue: ['作業待ちキュー', 'STEP 7'],
+    agents: ['AIエージェント', 'STEP 6'], schedule: ['スケジュール', 'STEP 5'], approvals: ['成果物・承認', 'STEP 5'],
+    settings: ['設定・ログ', 'STEP 9']
+  };
+  Object.keys(PLANNED).forEach(function (route) {
+    if (App.state.views[route]) return; // 実装済みの画面は上書きしない
+    App.registerView(route, {
+      title: PLANNED[route][0],
+      placeholder: true,
+      render: function (el) {
+        el.innerHTML = '<div class="card placeholder">「' + esc(PLANNED[route][0]) + '」画面は ' + esc(PLANNED[route][1]) + ' で実装します。</div>';
+      }
+    });
+  });
+
+  App.registerView('notfound', {
+    title: 'ページが見つかりません',
+    render: function (el) { el.innerHTML = '<div class="card placeholder">ページが見つかりません。<a href="#/dashboard">ダッシュボードへ</a></div>'; }
+  });
+})();
+</script>

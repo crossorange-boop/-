@@ -1,0 +1,136 @@
+<script>
+/** D. AIエージェント管理（一覧・追加・編集・稼働状態／利用制限の切替・実行履歴） */
+(function () {
+  var esc = App.esc;
+  var AVAIL_LABEL = { AVAILABLE: '利用可能', BUSY: '多忙', UNAVAILABLE: '利用不可', MAINTENANCE: 'メンテナンス中' };
+  var LIMIT_LABEL = { OK: '制限なし', NEAR_LIMIT: '上限間近', LIMITED: '利用制限中', ERROR: 'エラー' };
+  var CONN_LABEL = { INTERNAL: '内部処理', MANUAL_QUEUE: '手動キュー（指示書を手渡し）', N8N_WEBHOOK: 'n8n 連携（Phase 2）',
+    OFFICIAL_API: '公式API（Phase 2）', LOCAL_LLM: 'ローカルAI（Phase 2）' };
+
+  function stateChip(a) {
+    if (a.enabled !== 'TRUE') return '<span class="chip">停止中（無効）</span>';
+    if (a.usable) return '<span class="chip good">● 利用可能</span>';
+    if (a.availability !== 'AVAILABLE') return '<span class="chip critical">● ' + esc(AVAIL_LABEL[a.availability] || a.availability) + '</span>';
+    return '<span class="chip warn">● ' + esc(LIMIT_LABEL[a.usage_limit_status] || a.usage_limit_status) + '</span>';
+  }
+
+  function agentForm(a) {
+    a = a || {};
+    var en = App.state.boot.enums;
+    return (a.agent_id ? '' : App.field({ name: 'agent_id', label: 'AI ID（任意）', placeholder: '例：AGT-OLLAMA（空欄なら自動採番）', hint: '「AGT-」で始まる半角英大文字・数字・ハイフン' })) +
+      App.field({ name: 'agent_name', label: 'AI名', value: a.agent_name, required: true }) +
+      '<div class="row2">' +
+        App.field({ name: 'provider', label: '提供元', value: a.provider }) +
+        App.field({ name: 'connection_type', label: '接続方式', type: 'select', value: a.connection_type || 'MANUAL_QUEUE',
+          options: en.connection_type.map(function (v) { return { value: v, label: CONN_LABEL[v] || v }; }) }) +
+      '</div>' +
+      App.field({ name: 'role', label: '担当業務', value: a.role, placeholder: '例：デザイン・資料制作' }) +
+      App.field({ name: 'capabilities', label: '能力（カンマ区切り）', value: a.capabilities, placeholder: '例：design,slides,banner',
+        hint: '割り振りルールの「必要な能力」と照合されます。半角英小文字・数字・_' }) +
+      '<div class="row2">' +
+        App.field({ name: 'priority', label: '優先度（小さいほど優先）', type: 'number', value: a.priority || 5 }) +
+        App.field({ name: 'max_concurrent_tasks', label: '同時担当上限', type: 'number', value: a.max_concurrent_tasks || 5 }) +
+      '</div>' +
+      App.field({ name: 'notes', label: 'メモ', type: 'textarea', value: a.notes, rows: 2 });
+  }
+
+  function openForm(a) {
+    App.modal({ title: a ? 'AIエージェントを編集' : 'AIエージェントを追加', body: agentForm(a), submitLabel: a ? '保存' : '追加',
+      onSubmit: function (data) {
+        if (a) {
+          return App.call('agents.update', { agent_id: a.agent_id, data: data, row_version: a.row_version })
+            .then(function () { App.toast('保存しました'); App.render(); });
+        }
+        if (!data.agent_id) delete data.agent_id;
+        return App.call('agents.create', { data: data }).then(function (saved) {
+          App.toast('追加しました'); App.go('#/agents?id=' + encodeURIComponent(saved.agent_id));
+        });
+      } });
+  }
+
+  function openStatus(a) {
+    var en = App.state.boot.enums;
+    App.modal({ title: a.agent_name + ' の状態', submitLabel: '更新',
+      body: '<div class="row2">' +
+          App.field({ name: 'availability', label: '稼働状態', type: 'select', value: a.availability,
+            options: en.agent_availability.map(function (v) { return { value: v, label: AVAIL_LABEL[v] || v }; }) }) +
+          App.field({ name: 'usage_limit_status', label: '利用制限', type: 'select', value: a.usage_limit_status,
+            options: en.usage_limit_status.map(function (v) { return { value: v, label: LIMIT_LABEL[v] || v }; }) }) +
+        '</div>' +
+        App.field({ name: 'notes', label: 'メモ（理由・復旧予定など）', type: 'textarea', value: a.notes, rows: 2 }) +
+        '<label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" name="enabled"' + (a.enabled === 'TRUE' ? ' checked' : '') + '> 有効（オフにすると割り振り対象から外れます）</label>' +
+        '<div class="hint">利用不可・制限中にしても担当タスクは削除されず、「外部AIの利用待ち」として保持されます。戻すと再開候補に戻ります。</div>',
+      onSubmit: function (data) {
+        return App.call('agents.update', { agent_id: a.agent_id, row_version: a.row_version,
+          data: { availability: data.availability, usage_limit_status: data.usage_limit_status, notes: data.notes, enabled: data.enabled } })
+          .then(function () { App.toast('状態を更新しました'); App.render(); });
+      } });
+  }
+
+  function renderList(el) {
+    return App.call('agents.list').then(function (list) {
+      if (App.canEdit()) App.setActions('<button class="btn primary" id="btn-new-agent">' + App.icon('plus') + '<span>追加</span></button>');
+      el.innerHTML = '<div class="grid two">' + list.map(function (a) {
+        var caps = (a.capabilities || '').split(',').filter(Boolean).map(function (c) { return '<span class="chip">' + esc(c) + '</span>'; }).join(' ');
+        return '<div class="card" style="' + (a.enabled === 'TRUE' ? '' : 'opacity:.65') + '">' +
+          '<div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:4px">' +
+            '<a href="#/agents?id=' + encodeURIComponent(a.agent_id) + '" style="flex:1;min-width:0;font-weight:700;color:inherit;text-decoration:none;font-size:15px">' + esc(a.agent_name) + '</a>' + stateChip(a) + '</div>' +
+          '<div class="muted" style="font-size:12.5px">' + esc(a.role || '') + ' ・ ' + esc(CONN_LABEL[a.connection_type] || a.connection_type) + '</div>' +
+          '<div style="margin:8px 0;display:flex;gap:4px;flex-wrap:wrap">' + caps + '</div>' +
+          (a.notes ? '<div class="muted" style="font-size:12px;margin-bottom:8px">メモ：' + esc(a.notes) + '</div>' : '') +
+          '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
+            '<span class="num" style="font-size:13px">担当中 <b>' + a.active_task_count + '</b> / 上限 ' + esc(a.max_concurrent_tasks || '-') + '</span>' +
+            '<span style="flex:1"></span>' +
+            (App.canEdit() ? '<button class="btn" data-status-agent="' + esc(a.agent_id) + '">状態を変更</button>' : '') +
+            '<a class="btn" href="#/agents?id=' + encodeURIComponent(a.agent_id) + '">詳細</a>' +
+          '</div></div>';
+      }).join('') + '</div>';
+      var btn = document.getElementById('btn-new-agent');
+      if (btn) btn.addEventListener('click', function () { openForm(null); });
+      el.querySelectorAll('[data-status-agent]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          openStatus(list.filter(function (x) { return x.agent_id === b.getAttribute('data-status-agent'); })[0]);
+        });
+      });
+    });
+  }
+
+  function renderDetail(el, id) {
+    return App.call('agents.get', { agent_id: id }).then(function (a) {
+      App.setTitle(a.agent_name);
+      if (App.canEdit()) App.setActions('<button class="btn" id="btn-status">状態を変更</button><button class="btn" id="btn-edit" style="margin-left:6px">編集</button>');
+      var info = [
+        ['状態', stateChip(a)], ['稼働状態', esc(AVAIL_LABEL[a.availability] || a.availability)],
+        ['利用制限', esc(LIMIT_LABEL[a.usage_limit_status] || a.usage_limit_status)],
+        ['最終状態変更', App.fmtDate(a.last_status_changed_at, true) || '—'],
+        ['提供元', esc(a.provider || '—')], ['担当業務', esc(a.role || '—')],
+        ['接続方式', esc(CONN_LABEL[a.connection_type] || a.connection_type)],
+        ['能力', esc((a.capabilities || '—').split(',').join(', '))], ['優先度／上限', esc((a.priority || '-') + ' ／ ' + (a.max_concurrent_tasks || '-') + '件')],
+        ['メモ', esc(a.notes || '—')], ['AI ID', '<span class="muted">' + esc(a.agent_id) + '</span>']
+      ].map(function (x) { return '<tr><th style="width:110px">' + x[0] + '</th><td>' + x[1] + '</td></tr>'; }).join('');
+      var queue = a.queue.length ? '<ul class="list">' + a.queue.map(function (t) {
+        return '<li><a class="row" href="#/tasks?id=' + encodeURIComponent(t.task_id) + '"><span class="grow"><span class="title">' + esc(t.task_name) + '</span>' +
+          (t.deadline ? '<span class="meta"> ・ 期限 ' + App.fmtDate(t.deadline) + '</span>' : '') + '</span>' +
+          (t.is_overdue ? '<span class="chip critical">' + App.icon('alert') + ' 超過</span>' : '') + App.statusChip(t.status) + '</a></li>';
+      }).join('') + '</ul>' : '<div class="empty-state">担当中のタスクはありません</div>';
+      var logs = a.executions.length ? '<div class="table-wrap"><table class="data"><thead><tr><th>開始</th><th>種別</th><th>結果</th><th>タスク</th><th>エラー</th></tr></thead><tbody>' +
+        a.executions.map(function (e) {
+          return '<tr><td class="num" style="white-space:nowrap">' + App.fmtDate(e.start_time, true) + '</td><td>' + esc(e.execution_type) + '</td>' +
+            '<td><span class="chip ' + (e.result === 'FAILED' ? 'critical' : e.result === 'SUCCESS' ? 'good' : '') + '">' + esc(e.result || '実行中') + '</span></td>' +
+            '<td>' + (e.task_id ? '<a href="#/tasks?id=' + encodeURIComponent(e.task_id) + '">開く</a>' : '—') + '</td><td>' + esc(e.error_message || '') + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="empty-state">実行履歴はまだありません（自動処理の記録は STEP 8 以降に蓄積されます）</div>';
+      el.innerHTML = '<p style="margin:0 0 12px"><a href="#/agents">← AIエージェント一覧</a></p>' +
+        '<div class="grid two"><div class="card"><h2>基本情報</h2><table class="data">' + info + '</table></div>' +
+        '<div class="card"><h2>担当中のタスク <span class="sub">' + a.active_task_count + '件</span></h2>' + queue + '</div></div>' +
+        '<div class="card section"><h2>実行履歴 <span class="sub">直近50件</span></h2>' + logs + '</div>';
+      var bs = document.getElementById('btn-status'); if (bs) bs.addEventListener('click', function () { openStatus(a); });
+      var be = document.getElementById('btn-edit'); if (be) be.addEventListener('click', function () { openForm(a); });
+    });
+  }
+
+  App.registerView('agents', {
+    title: 'AIエージェント',
+    render: function (el, params) { return params.id ? renderDetail(el, params.id) : renderList(el); }
+  });
+})();
+</script>

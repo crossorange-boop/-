@@ -152,17 +152,72 @@ async function main() {
       await shot('schedule-pc');
     });
 
+    await step('AIエージェントを追加できる（能力は小文字に正規化）', async () => {
+      await page.goto(BASE + '/#/agents');
+      await page.waitForSelector('#btn-new-agent');
+      await shot('agents-pc');
+      await page.click('#btn-new-agent');
+      await page.fill('#f_agent_id', 'AGT-OLLAMA');
+      await page.fill('#f_agent_name', 'Ollama（ローカル）');
+      await page.selectOption('#f_connection_type', 'LOCAL_LLM');
+      await page.fill('#f_capabilities', 'Summary, classification');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('h1:has-text("Ollama（ローカル）")');
+      assert.ok(await page.isVisible('td:has-text("summary, classification")'));
+    });
+
+    await step('不正なAI IDはフォーム内にエラー表示', async () => {
+      await page.goto(BASE + '/#/agents');
+      await page.click('#btn-new-agent');
+      await page.fill('#f_agent_id', 'bad id');
+      await page.fill('#f_agent_name', 'x');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.modal [data-error]:has-text("AI ID")');
+      await page.click('.modal [data-cancel]');
+    });
+
+    await step('AIを利用制限中にすると状態表示と通知が変わり、戻すと復旧通知', async () => {
+      await page.click('[data-status-agent="AGT-MUSE"]');
+      await page.selectOption('#f_usage_limit_status', 'LIMITED');
+      await page.fill('#f_notes', '月間上限');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.toast:has-text("状態を更新しました")');
+      await page.waitForSelector('.card:has-text("Muse") .chip.warn:has-text("利用制限中")');
+      await page.goto(BASE + '/#/notifications');
+      await page.waitForSelector('text=Muse は利用制限中（LIMITED）です');
+      await page.goto(BASE + '/#/agents?id=AGT-MUSE');
+      await page.waitForSelector('#btn-status');
+      await shot('agent-detail-pc');
+      await page.click('#btn-status');
+      await page.selectOption('#f_usage_limit_status', 'OK');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.chip.good:has-text("利用可能")');
+      await page.goto(BASE + '/#/notifications');
+      await page.waitForSelector('text=Muse が利用可能になりました');
+    });
+
+    await step('AIを無効にすると一覧で停止中表示', async () => {
+      await page.goto(BASE + '/#/agents');
+      await page.click('[data-status-agent="AGT-OLLAMA"]');
+      await page.uncheck('.modal input[name=enabled]');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.card:has-text("Ollama") .chip:has-text("停止中（無効）")');
+    });
+
     await step('スマホ幅で各画面が横にはみ出さない', async () => {
       const ctx = await browser.newContext({ ...devices['iPhone 13'] });
       const m = await ctx.newPage();
       m.on('pageerror', (e) => errors.push('mobile: ' + e.message));
-      for (const r of ['projects', 'tasks', 'schedule', 'approvals']) {
+      for (const r of ['projects', 'tasks', 'schedule', 'approvals', 'agents', 'agents?id=AGT-CANVA']) {
         await m.goto(BASE + '/#/' + r);
         await m.waitForSelector('.content .card');
         await m.waitForTimeout(200);
         const overflow = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
         assert.ok(overflow <= 0, r + ' overflow ' + overflow);
-        if (outDir) await m.screenshot({ path: path.join(outDir, r + '-mobile.png'), fullPage: false });
+        // カードの中身がカードの外にはみ出していないか
+        const spill = await m.evaluate(() => Array.from(document.querySelectorAll('.content .card')).filter((c) => c.scrollWidth > c.clientWidth + 1 && !c.querySelector('.table-wrap')).length);
+        assert.strictEqual(spill, 0, r + ' のカード内容がはみ出しています');
+        if (outDir) await m.screenshot({ path: path.join(outDir, r.replace(/[?=]/g, '_') + '-mobile.png'), fullPage: false });
       }
       await m.goto(BASE + '/#/tasks');
       await m.waitForSelector('#btn-new-task');

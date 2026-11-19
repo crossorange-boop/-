@@ -8,7 +8,7 @@
  */
 
 var ApprovalService = (function () {
-  var S = Config.TASK_STATUS;
+  // 状態名は文字列で直接扱う（ファイルの読み込み順に依存しないため Config を読み込み時に参照しない）
 
   var HANDLERS = {
     DELETE_PROJECT: function (apr) { ProjectService._deleteNow(apr.target_id); },
@@ -94,8 +94,8 @@ var ApprovalService = (function () {
       if (a.task_id) {
         var task = repo.findById('Tasks', a.task_id);
         var others = repo.findAll('Approvals').some(function (x) { return x.task_id === a.task_id && x.approval_status === 'PENDING'; });
-        if (task && task.status === S.APPROVAL && !others) {
-          TaskService._transition(a.task_id, S.COMPLETED, { actor: 'APPROVAL', reason: '承認: ' + (comment || '') });
+        if (task && task.status === 'APPROVAL' && !others) {
+          TaskService._transition(a.task_id, 'COMPLETED', { actor: 'APPROVAL', reason: '承認: ' + (comment || '') });
         }
       }
       return res.after;
@@ -115,8 +115,8 @@ var ApprovalService = (function () {
       AuditService.record('REJECT', 'Approvals', approvalId, res.before, res.after);
       if (a.task_id) {
         var task = repo.findById('Tasks', a.task_id);
-        if (task && task.status === S.APPROVAL) {
-          TaskService._transition(a.task_id, S.IN_PROGRESS, { actor: 'USER', reason: '承認差し戻し: ' + comment });
+        if (task && task.status === 'APPROVAL') {
+          TaskService._transition(a.task_id, 'IN_PROGRESS', { actor: 'USER', reason: '承認差し戻し: ' + comment });
         }
       }
       return res.after;

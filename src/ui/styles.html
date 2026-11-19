@@ -99,6 +99,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .btn.danger { color: var(--critical); }
 .btn.icon { padding: 6px; width: 36px; }
+.btn.btn-sm { min-height: 30px; padding: 4px 10px; font-size: 12.5px; }
 .btn svg { width: 18px; height: 18px; }
 .btn:disabled { opacity: .5; cursor: default; }
 
@@ -214,6 +215,18 @@ table.data tr:hover td { background: var(--surface-2); }
   .sp-only { display: block; }
   form.card[id$="-filter"] { grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
   /* 一覧表はスマホでは横スクロール（文字を細切れに折り返さない） */
+  /* タップしやすさ：主要な操作要素は 44px 以上、入力欄は 16px（iPhone の自動拡大を防ぐ） */
+  .btn { min-height: 44px; padding: 8px 14px; }
+  .btn.icon { width: 44px; height: 44px; }
+  .btn.btn-sm { min-height: 40px; }
+  .field input, .field select, .field textarea { min-height: 44px; font-size: 16px; }
+  input[type=checkbox] { width: 22px; height: 22px; }
+  .tabs a { padding: 12px 14px; }
+  a.chip { min-height: 40px; padding: 4px 12px; font-size: 13px; }
+  .list a.row { min-height: 44px; align-items: center; }
+  .list a.title, .hbar .name a { display: inline-block; padding: 8px 0; }
+  .item-actions { flex-basis: 100%; }
+  .item-actions .btn { flex: 1 1 auto; }
   .table-wrap { margin: 0 -14px; padding: 0 14px; -webkit-overflow-scrolling: touch; }
   .table-wrap table.data { min-width: 600px; }
   .table-wrap table.data td { overflow-wrap: break-word; word-break: normal; }

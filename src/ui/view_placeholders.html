@@ -7,7 +7,7 @@
     title: 'メニュー',
     render: function (el) {
       el.innerHTML = '<div class="card"><ul class="list">' + App.NAV.map(function (n) {
-        return '<li><a class="row" href="#/' + n.route + '" style="align-items:center"><span style="width:22px;display:inline-flex">' + App.icon(n.icon) + '</span>' +
+        return '<li><a class="row" href="#/' + n.route + '" style="align-items:center;min-height:48px"><span style="width:22px;display:inline-flex">' + App.icon(n.icon) + '</span>' +
           '<span class="grow title">' + esc(n.label) + '</span></a></li>';
       }).join('') + '</ul></div>' +
       '<p class="muted" style="font-size:12px;margin-top:12px">' + esc(App.state.boot.user.email) + '（' + esc(App.state.boot.user.role) + '）／v' + esc(App.state.boot.version) + '</p>';

@@ -87,7 +87,7 @@
         '<div class="report-text">' + esc(r.text) + '</div>'
       : '<div class="empty-state">まだ作成されていません。定期処理が設定された時刻に自動作成します。</div>';
     return '<div class="card section" id="report-card"><h2>今日のレポート' +
-      '<button class="btn" style="margin-left:auto;min-height:30px;padding:4px 10px;font-size:12.5px" id="btn-report-preview">最新の状態で表示</button></h2>' +
+      '<button class="btn btn-sm" style="margin-left:auto" id="btn-report-preview">最新の状態で表示</button></h2>' +
       '<nav class="tabs" style="margin-bottom:10px">' + REPORT_TABS.map(function (t) {
         return '<a href="javascript:void(0)" data-report-tab="' + t[0] + '" class="' + (t[0] === tab ? 'active' : '') + '">' + esc(t[1]) + '</a>';
       }).join('') + '</nav><div id="report-body">' + body + '</div></div>';

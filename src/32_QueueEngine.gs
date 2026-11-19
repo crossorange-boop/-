@@ -16,7 +16,7 @@
  */
 
 var QueueEngine = (function () {
-  var S = Config.TASK_STATUS;
+  // 状態名は文字列で直接扱う（ファイルの読み込み順に依存しないため Config を読み込み時に参照しない）
   var SYSTEM_WAIT_PREFIX = '[自動] ';
 
   function isLocked(task, now) {
@@ -76,7 +76,7 @@ var QueueEngine = (function () {
     var move = function (task, to, reason, extraPatch, logType, agentId) {
       TaskService._transition(task.task_id, to, { actor: 'SYSTEM', reason: reason, extraPatch: extraPatch });
       AuditService.logExecution({ task_id: task.task_id, agent_id: agentId || task.assigned_agent_id || '',
-        execution_type: logType, result: to === S.WAITING ? 'SKIPPED' : 'SUCCESS',
+        execution_type: logType, result: to === 'WAITING' ? 'SKIPPED' : 'SUCCESS',
         error_message: reason || '', retry_count: task.retry_count, triggered_by: triggeredBy });
       summary.details.push({ task_id: task.task_id, task_name: task.task_name, to: to, reason: reason || '' });
     };
@@ -99,12 +99,12 @@ var QueueEngine = (function () {
     // ⓪ 自動再投入：自動処理で失敗したタスクを上限回数まで READY に戻す（人が失敗にしたものは対象外）
     var maxRetry = SettingsService.getNumber('MAX_RETRY_COUNT', 3);
     fresh().forEach(function (t) {
-      if (outOfTime() || t.status !== S.FAILED) return;
+      if (outOfTime() || t.status !== 'FAILED') return;
       if (String(t.waiting_reason || '').indexOf(SYSTEM_WAIT_PREFIX) !== 0) return;
       var count = Number(t.retry_count) || 0;
       if (count >= maxRetry) return;
       safely(t, function () {
-        move(t, S.READY, '自動再投入（' + (count + 1) + '/' + maxRetry + '回目）', { retry_count: count + 1 }, 'AUTO_RETRY');
+        move(t, 'READY', '自動再投入（' + (count + 1) + '/' + maxRetry + '回目）', { retry_count: count + 1 }, 'AUTO_RETRY');
         summary.retried = (summary.retried || 0) + 1;
       });
     });
@@ -114,32 +114,32 @@ var QueueEngine = (function () {
     var map = taskMap();
     fresh().forEach(function (t) {
       if (outOfTime()) return;
-      if ([S.BACKLOG, S.READY, S.BLOCKED].indexOf(t.status) < 0) return;
+      if (['BACKLOG', 'READY', 'BLOCKED'].indexOf(t.status) < 0) return;
       var sat = DependencyGraph.predecessorsSatisfied(t.task_id, deps, map);
-      if (!sat.satisfied && t.status !== S.BLOCKED) {
+      if (!sat.satisfied && t.status !== 'BLOCKED') {
         safely(t, function () {
           var names = sat.pending.map(function (id) { return map[id] ? map[id].task_name : id; }).join('、');
-          move(t, S.BLOCKED, SYSTEM_WAIT_PREFIX + '前提タスク待ち：' + names, null, 'AUTO_BLOCK');
+          move(t, 'BLOCKED', SYSTEM_WAIT_PREFIX + '前提タスク待ち：' + names, null, 'AUTO_BLOCK');
           summary.blocked++;
         });
-      } else if (sat.satisfied && t.status === S.BLOCKED) {
-        safely(t, function () { move(t, S.BACKLOG, '前提タスクが完了しました', null, 'AUTO_UNBLOCK'); summary.unblocked++; });
+      } else if (sat.satisfied && t.status === 'BLOCKED') {
+        safely(t, function () { move(t, 'BACKLOG', '前提タスクが完了しました', null, 'AUTO_UNBLOCK'); summary.unblocked++; });
       }
     });
 
     // ② 障害対応：担当AIが使えなくなった割当済みタスクは WAITING へ
     fresh().forEach(function (t) {
-      if (outOfTime() || t.status !== S.ASSIGNED) return;
+      if (outOfTime() || t.status !== 'ASSIGNED') return;
       var agent = agentsById[t.assigned_agent_id];
       if (agent && AgentService.isUsable(agent)) return;
       safely(t, function () {
-        move(t, S.WAITING, SYSTEM_WAIT_PREFIX + AgentService.unusableReason(agent), null, 'AUTO_WAIT');
+        move(t, 'WAITING', SYSTEM_WAIT_PREFIX + AgentService.unusableReason(agent), null, 'AUTO_WAIT');
         summary.waiting++;
       });
     });
     // 作業中のタスクは状態を変えず、担当AIの停止を通知する（作業内容を失わないため）
     fresh().forEach(function (t) {
-      if (t.status !== S.IN_PROGRESS) return;
+      if (t.status !== 'IN_PROGRESS') return;
       var agent = agentsById[t.assigned_agent_id];
       if (agent && !AgentService.isUsable(agent)) {
         NotificationService.createOnce('AGENT_UNAVAILABLE_IN_PROGRESS',
@@ -150,20 +150,20 @@ var QueueEngine = (function () {
 
     // ③ 復旧対応：WAITING のうち担当AIが使えるようになったものを READY へ
     fresh().forEach(function (t) {
-      if (outOfTime() || t.status !== S.WAITING) return;
+      if (outOfTime() || t.status !== 'WAITING') return;
       var agent = agentsById[t.assigned_agent_id];
       // 人が手動で WAITING にしたタスク（理由が自動でないもの）は人が戻す
       if (String(t.waiting_reason || '').indexOf(SYSTEM_WAIT_PREFIX) !== 0) return;
       if (!agent || !AgentService.isUsable(agent)) return;
       safely(t, function () {
-        move(t, S.READY, agent.agent_name + ' が利用可能になったため再開候補に戻しました', null, 'AUTO_RECOVER');
+        move(t, 'READY', agent.agent_name + ' が利用可能になったため再開候補に戻しました', null, 'AUTO_RECOVER');
         summary.recovered++;
       });
     });
 
     // ④ 分類：BACKLOG → READY
     fresh().forEach(function (t) {
-      if (outOfTime() || t.status !== S.BACKLOG) return;
+      if (outOfTime() || t.status !== 'BACKLOG') return;
       var c = AssignmentEngine.classify(t, rules);
       if (!c.source) {
         summary.needs_classification++;
@@ -172,26 +172,26 @@ var QueueEngine = (function () {
         return;
       }
       safely(t, function () {
-        move(t, S.READY, c.rule_id ? 'ルール ' + c.rule_id + ' で分類' : '担当AI指定済み',
+        move(t, 'READY', c.rule_id ? 'ルール ' + c.rule_id + ' で分類' : '担当AI指定済み',
           { category: c.category, required_capability: c.required_capability }, 'AUTO_CLASSIFY');
         summary.classified++;
       });
     });
 
     // ⑤ 割り振り：READY → ASSIGNED / WAITING
-    AssignmentEngine.sortQueue(fresh().filter(function (t) { return t.status === S.READY; })).forEach(function (t) {
+    AssignmentEngine.sortQueue(fresh().filter(function (t) { return t.status === 'READY'; })).forEach(function (t) {
       if (outOfTime()) return;
       safely(t, function () {
         var c = AssignmentEngine.classify(t, rules);
         var d = AssignmentEngine.selectAgent(t, c, agents, counts);
         if (d.decision === 'ASSIGN') {
           var agent = agentsById[d.agent_id];
-          move(t, S.ASSIGNED, d.reason, { assigned_agent_id: d.agent_id }, 'AUTO_ASSIGN', d.agent_id);
+          move(t, 'ASSIGNED', d.reason, { assigned_agent_id: d.agent_id }, 'AUTO_ASSIGN', d.agent_id);
           counts[d.agent_id] = (counts[d.agent_id] || 0) + 1;
           AgentAdapter.get(agent.connection_type).dispatch(repo.findById('Tasks', t.task_id), agent);
           summary.assigned++;
         } else if (d.decision === 'WAIT') {
-          move(t, S.WAITING, SYSTEM_WAIT_PREFIX + d.reason, { assigned_agent_id: d.agent_id }, 'AUTO_WAIT', d.agent_id);
+          move(t, 'WAITING', SYSTEM_WAIT_PREFIX + d.reason, { assigned_agent_id: d.agent_id }, 'AUTO_WAIT', d.agent_id);
           summary.waiting++;
         } else if (d.decision === 'HOLD') {
           summary.held++;
@@ -229,7 +229,7 @@ var QueueEngine = (function () {
         var repo = Repository.get();
         var t = repo.findById('Tasks', taskId);
         if (!t) throw new Util.AppError('NOT_FOUND', 'タスクが見つかりません');
-        var after = TaskService._transition(taskId, S.FAILED, { actor: 'SYSTEM', reason: SYSTEM_WAIT_PREFIX + (message || '外部処理の失敗') });
+        var after = TaskService._transition(taskId, 'FAILED', { actor: 'SYSTEM', reason: SYSTEM_WAIT_PREFIX + (message || '外部処理の失敗') });
         AuditService.logExecution({ task_id: taskId, agent_id: t.assigned_agent_id, execution_type: 'EXTERNAL_EXECUTION', result: 'FAILED',
           error_message: message || '', retry_count: t.retry_count, triggered_by: 'SYSTEM' });
         var max = SettingsService.getNumber('MAX_RETRY_COUNT', 3);

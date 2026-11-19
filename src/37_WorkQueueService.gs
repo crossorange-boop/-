@@ -5,8 +5,8 @@
  */
 
 var WorkQueueService = (function () {
-  var S = Config.TASK_STATUS;
-  var QUEUE_STATUSES = [S.ASSIGNED, S.IN_PROGRESS, S.WAITING, S.REVIEW];
+  // 状態名は文字列で直接扱う（ファイルの読み込み順に依存しないため Config を読み込み時に参照しない）
+  var QUEUE_STATUSES = ['ASSIGNED', 'IN_PROGRESS', 'WAITING', 'REVIEW'];
 
   /** 各AIへ貼り付ける指示書テキスト */
   function buildInstructionText(task, projectName, predecessors) {
@@ -58,17 +58,17 @@ var WorkQueueService = (function () {
         enabled: Util.toBool(a.enabled), unusable_reason: AgentService.unusableReason(a),
         max_concurrent_tasks: a.max_concurrent_tasks, tasks: own,
         counts: {
-          assigned: own.filter(function (t) { return t.status === S.ASSIGNED; }).length,
-          in_progress: own.filter(function (t) { return t.status === S.IN_PROGRESS; }).length,
-          waiting: own.filter(function (t) { return t.status === S.WAITING; }).length,
-          review: own.filter(function (t) { return t.status === S.REVIEW; }).length
+          assigned: own.filter(function (t) { return t.status === 'ASSIGNED'; }).length,
+          in_progress: own.filter(function (t) { return t.status === 'IN_PROGRESS'; }).length,
+          waiting: own.filter(function (t) { return t.status === 'WAITING'; }).length,
+          review: own.filter(function (t) { return t.status === 'REVIEW'; }).length
         }
       };
     });
     var lastRun = repo.findAll('ExecutionLogs').filter(function (e) { return e.execution_type === 'QUEUE_CHECK'; }).slice(-1)[0] || null;
     return {
       lanes: lanes,
-      unassigned_backlog: all.filter(function (t) { return [S.BACKLOG, S.READY].indexOf(t.status) >= 0; }).length,
+      unassigned_backlog: all.filter(function (t) { return ['BACKLOG', 'READY'].indexOf(t.status) >= 0; }).length,
       last_run: lastRun ? { time: lastRun.end_time || lastRun.start_time, result: lastRun.result, summary: lastRun.error_message } : null
     };
   }

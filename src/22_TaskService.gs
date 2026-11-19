@@ -4,7 +4,7 @@
  */
 
 var TaskService = (function () {
-  var S = Config.TASK_STATUS;
+  // 状態名は文字列で直接扱う（ファイルの読み込み順に依存しないため Config を読み込み時に参照しない）
 
   function normalize(input, isCreate) {
     var out = {};
@@ -112,7 +112,7 @@ var TaskService = (function () {
         var pred = repo.findById('Tasks', pid);
         repo.insert('Dependencies', {
           predecessor_task_id: pid, successor_task_id: taskId, dependency_type: 'FS',
-          status: pred && pred.status === S.COMPLETED ? 'SATISFIED' : 'ACTIVE'
+          status: pred && pred.status === 'COMPLETED' ? 'SATISFIED' : 'ACTIVE'
         });
       }
     });
@@ -125,7 +125,7 @@ var TaskService = (function () {
     var rec = normalize(input, true);
     return Repository.get().withLock(function () {
       checkReferences(rec, null);
-      rec.status = S.BACKLOG;
+      rec.status = 'BACKLOG';
       rec.retry_count = 0;
       rec.actual_hours = rec.actual_hours === undefined ? '' : rec.actual_hours;
       var repo = Repository.get();
@@ -171,7 +171,7 @@ var TaskService = (function () {
     if (!task) throw new Util.AppError('NOT_FOUND', 'タスクが見つかりません');
     StateMachine.assertTransition(task.status, to, actor, options.reason);
 
-    if ([S.READY, S.ASSIGNED, S.IN_PROGRESS].indexOf(to) >= 0) {
+    if (['READY', 'ASSIGNED', 'IN_PROGRESS'].indexOf(to) >= 0) {
       var taskMap = {};
       repo.findAll('Tasks').forEach(function (t) { taskMap[t.task_id] = t; });
       var sat = DependencyGraph.predecessorsSatisfied(taskId, repo.findAll('Dependencies'), taskMap);
@@ -179,20 +179,20 @@ var TaskService = (function () {
         throw new Util.AppError('INVALID_STATE', '前提タスクが完了していません: ' + sat.pending.join(', '));
       }
     }
-    if ((to === S.ASSIGNED || to === S.IN_PROGRESS) && !task.assigned_agent_id && !(options.extraPatch || {}).assigned_agent_id) {
+    if ((to === 'ASSIGNED' || to === 'IN_PROGRESS') && !task.assigned_agent_id && !(options.extraPatch || {}).assigned_agent_id) {
       throw new Util.ValidationError('担当AIを設定してください');
     }
 
     var patch = { status: to, lock_token: '', locked_until: '' };
-    patch.waiting_reason = [S.WAITING, S.BLOCKED, S.FAILED, S.CANCELLED].indexOf(to) >= 0 ? String(options.reason || '') : '';
+    patch.waiting_reason = ['WAITING', 'BLOCKED', 'FAILED', 'CANCELLED'].indexOf(to) >= 0 ? String(options.reason || '') : '';
     Object.keys(options.extraPatch || {}).forEach(function (k) { patch[k] = options.extraPatch[k]; });
     var res = repo.update('Tasks', taskId, patch, { expectedVersion: options.expectedVersion });
 
-    if (to === S.COMPLETED) {
+    if (to === 'COMPLETED') {
       var satisfied = repo.findAll('Dependencies').filter(function (d) { return d.predecessor_task_id === taskId && d.status === 'ACTIVE'; });
       if (satisfied.length) repo.updateMany('Dependencies', satisfied.map(function (d) { return { id: d.dependency_id, patch: { status: 'SATISFIED' } }; }));
     }
-    if (to === S.APPROVAL) {
+    if (to === 'APPROVAL') {
       var pending = repo.findAll('Approvals').some(function (a) { return a.task_id === taskId && a.approval_status === 'PENDING'; });
       if (!pending) {
         ApprovalService.request({ action_type: 'TASK_COMPLETION', target_type: 'Tasks', target_id: taskId, task_id: taskId,
@@ -240,13 +240,13 @@ var TaskService = (function () {
     return Repository.get().withLock(function () {
       var t = Repository.get().findById('Tasks', taskId);
       if (!t) throw new Util.AppError('NOT_FOUND', 'タスクが見つかりません');
-      if (t.status !== S.FAILED) throw new Util.AppError('INVALID_STATE', '再実行できるのは「失敗」のタスクだけです');
+      if (t.status !== 'FAILED') throw new Util.AppError('INVALID_STATE', '再実行できるのは「失敗」のタスクだけです');
       var max = SettingsService.getNumber('MAX_RETRY_COUNT', 3);
       var count = Number(t.retry_count) || 0;
       if (count >= max && !(force && user.role === 'OWNER')) {
         throw new Util.AppError('INVALID_STATE', '再実行の上限（' + max + '回）に達しています。内容を見直してからオーナーが「上限を超えて再実行」してください');
       }
-      var after = transition(taskId, S.READY, { actor: 'USER', reason: '再実行（' + (count + 1) + '回目）' + (reason ? '：' + reason : ''),
+      var after = transition(taskId, 'READY', { actor: 'USER', reason: '再実行（' + (count + 1) + '回目）' + (reason ? '：' + reason : ''),
         extraPatch: { retry_count: count + 1 } });
       AuditService.logExecution({ task_id: taskId, agent_id: t.assigned_agent_id, execution_type: 'MANUAL_RETRY', result: 'SUCCESS',
         error_message: reason || '', retry_count: count + 1 });

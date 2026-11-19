@@ -4,7 +4,7 @@
  */
 
 var DeliverableService = (function () {
-  var S = Config.TASK_STATUS;
+  // 状態名は文字列で直接扱う（ファイルの読み込み順に依存しないため Config を読み込み時に参照しない）
 
   function list(filter) {
     filter = filter || {};
@@ -42,8 +42,8 @@ var DeliverableService = (function () {
         submitted_at: Util.nowIso(), review_status: 'PENDING', review_comment: ''
       });
       AuditService.record('CREATE', 'Deliverables', saved.deliverable_id, null, saved);
-      if (task.status === S.IN_PROGRESS) {
-        TaskService._transition(taskId, S.REVIEW, { actor: 'USER', reason: '成果物提出: ' + fileName + ' v' + version });
+      if (task.status === 'IN_PROGRESS') {
+        TaskService._transition(taskId, 'REVIEW', { actor: 'USER', reason: '成果物提出: ' + fileName + ' v' + version });
       }
       return saved;
     });
@@ -67,14 +67,14 @@ var DeliverableService = (function () {
       AuditService.record(decision === 'APPROVED' ? 'APPROVE' : 'REJECT', 'Deliverables', deliverableId, res.before, res.after);
 
       var task = repo.findById('Tasks', d.task_id);
-      if (task && task.status === S.REVIEW) {
+      if (task && task.status === 'REVIEW') {
         if (decision === 'REJECTED') {
-          TaskService._transition(task.task_id, S.IN_PROGRESS, { actor: 'USER', reason: '差し戻し: ' + comment });
+          TaskService._transition(task.task_id, 'IN_PROGRESS', { actor: 'USER', reason: '差し戻し: ' + comment });
         } else {
           var stillPending = repo.findAll('Deliverables').some(function (x) { return x.task_id === task.task_id && x.review_status === 'PENDING'; });
           if (!stillPending) {
             var needsApproval = repo.findAll('Approvals').some(function (a) { return a.task_id === task.task_id && a.approval_status === 'PENDING'; });
-            TaskService._transition(task.task_id, needsApproval ? S.APPROVAL : S.COMPLETED, { actor: 'USER', reason: '成果物承認' });
+            TaskService._transition(task.task_id, needsApproval ? 'APPROVAL' : 'COMPLETED', { actor: 'USER', reason: '成果物承認' });
           }
         }
       }

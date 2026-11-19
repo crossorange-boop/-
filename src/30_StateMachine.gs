@@ -10,26 +10,26 @@
  */
 
 var StateMachine = (function () {
-  var S = Config.TASK_STATUS;
+  // 状態名は文字列で直接扱う（ファイルの読み込み順に依存しないため Config を読み込み時に参照しない）
 
   var TRANSITIONS = {};
-  TRANSITIONS[S.BACKLOG] = [S.READY, S.ASSIGNED, S.BLOCKED, S.WAITING, S.CANCELLED];
-  TRANSITIONS[S.READY] = [S.ASSIGNED, S.BLOCKED, S.WAITING, S.BACKLOG, S.CANCELLED];
-  TRANSITIONS[S.ASSIGNED] = [S.IN_PROGRESS, S.READY, S.WAITING, S.BLOCKED, S.FAILED, S.CANCELLED];
-  TRANSITIONS[S.IN_PROGRESS] = [S.REVIEW, S.WAITING, S.BLOCKED, S.FAILED, S.ASSIGNED, S.CANCELLED];
-  TRANSITIONS[S.WAITING] = [S.READY, S.ASSIGNED, S.IN_PROGRESS, S.CANCELLED];
-  TRANSITIONS[S.BLOCKED] = [S.READY, S.BACKLOG, S.CANCELLED];
-  TRANSITIONS[S.REVIEW] = [S.APPROVAL, S.COMPLETED, S.IN_PROGRESS, S.FAILED, S.CANCELLED];
-  TRANSITIONS[S.APPROVAL] = [S.COMPLETED, S.IN_PROGRESS, S.CANCELLED];
-  TRANSITIONS[S.FAILED] = [S.READY, S.BACKLOG, S.CANCELLED];
-  TRANSITIONS[S.COMPLETED] = [];
-  TRANSITIONS[S.CANCELLED] = [S.BACKLOG]; // 復元（人間のみ）
+  TRANSITIONS['BACKLOG'] = ['READY', 'ASSIGNED', 'BLOCKED', 'WAITING', 'CANCELLED'];
+  TRANSITIONS['READY'] = ['ASSIGNED', 'BLOCKED', 'WAITING', 'BACKLOG', 'CANCELLED'];
+  TRANSITIONS['ASSIGNED'] = ['IN_PROGRESS', 'READY', 'WAITING', 'BLOCKED', 'FAILED', 'CANCELLED'];
+  TRANSITIONS['IN_PROGRESS'] = ['REVIEW', 'WAITING', 'BLOCKED', 'FAILED', 'ASSIGNED', 'CANCELLED'];
+  TRANSITIONS['WAITING'] = ['READY', 'ASSIGNED', 'IN_PROGRESS', 'CANCELLED'];
+  TRANSITIONS['BLOCKED'] = ['READY', 'BACKLOG', 'CANCELLED'];
+  TRANSITIONS['REVIEW'] = ['APPROVAL', 'COMPLETED', 'IN_PROGRESS', 'FAILED', 'CANCELLED'];
+  TRANSITIONS['APPROVAL'] = ['COMPLETED', 'IN_PROGRESS', 'CANCELLED'];
+  TRANSITIONS['FAILED'] = ['READY', 'BACKLOG', 'CANCELLED'];
+  TRANSITIONS['COMPLETED'] = [];
+  TRANSITIONS['CANCELLED'] = ['BACKLOG']; // 復元（人間のみ）
 
   /** 定期処理が自動で行ってよい遷移先 */
-  var SYSTEM_TARGETS = [S.READY, S.ASSIGNED, S.WAITING, S.BLOCKED, S.FAILED, S.BACKLOG];
+  var SYSTEM_TARGETS = ['READY', 'ASSIGNED', 'WAITING', 'BLOCKED', 'FAILED', 'BACKLOG'];
 
   /** 理由の入力が必要な遷移先 */
-  var REASON_REQUIRED = [S.CANCELLED, S.FAILED, S.WAITING];
+  var REASON_REQUIRED = ['CANCELLED', 'FAILED', 'WAITING'];
 
   function check(from, to, actor) {
     actor = actor || 'USER';
@@ -42,13 +42,13 @@ var StateMachine = (function () {
     if (actor === 'SYSTEM' && SYSTEM_TARGETS.indexOf(to) === -1) {
       return { ok: false, reason: '自動処理では ' + label(to) + ' に変更できません' };
     }
-    if (from === S.APPROVAL && to === S.COMPLETED && actor !== 'APPROVAL') {
+    if (from === 'APPROVAL' && to === 'COMPLETED' && actor !== 'APPROVAL') {
       return { ok: false, reason: '承認待ちのタスクは承認画面から承認してください' };
     }
-    if (to === S.CANCELLED && actor !== 'USER') {
+    if (to === 'CANCELLED' && actor !== 'USER') {
       return { ok: false, reason: 'キャンセルは人間の操作でのみ行えます' };
     }
-    if (from === S.CANCELLED && actor !== 'USER') {
+    if (from === 'CANCELLED' && actor !== 'USER') {
       return { ok: false, reason: 'キャンセルの取り消しは人間の操作でのみ行えます' };
     }
     return { ok: true };

@@ -39,7 +39,7 @@
       '<div class="meta">' + esc(t.project_name) + (t.deadline ? ' ・ 期限 ' + App.fmtDate(t.deadline, true) : '') +
       (t.reference_urls.length ? ' ・ 資料 ' + t.reference_urls.length + '件' : '') + (t.has_instruction ? '' : ' ・ <span style="color:var(--warn)">指示書未入力</span>') + '</div>' +
       (reason ? '<div class="meta">理由' + (auto ? '（自動判定）' : '') + '：' + esc(reason) + '</div>' : '') + '</div>' +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + actions + '</div></li>';
+      '<div class="item-actions" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + actions + '</div></li>';
   }
 
   function laneHtml(lane) {

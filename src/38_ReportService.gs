@@ -8,7 +8,7 @@
  */
 
 var ReportService = (function () {
-  var S = Config.TASK_STATUS;
+  // 状態名は文字列で直接扱う（ファイルの読み込み順に依存しないため Config を読み込み時に参照しない）
   var TYPES = { morning: 'DAILY_PLAN', midday: 'MIDDAY_CHECK', evening: 'DAILY_SUMMARY' };
   var TITLES = { morning: '朝の当日タスク一覧', midday: '昼の中間経過', evening: '夕方の進捗集計' };
   var MAX_ITEMS = 15;
@@ -30,7 +30,7 @@ var ReportService = (function () {
     var projectNames = {}, agentNames = {};
     projects.forEach(function (p) { projectNames[p.project_id] = p.project_name; });
     repo.findAll('Agents').forEach(function (a) { agentNames[a.agent_id] = a.agent_name; });
-    var tasks = repo.findAll('Tasks').filter(function (t) { return t.status !== S.CANCELLED; });
+    var tasks = repo.findAll('Tasks').filter(function (t) { return t.status !== 'CANCELLED'; });
     var byId = {};
     tasks.forEach(function (t) { byId[t.task_id] = t; });
 
@@ -43,7 +43,7 @@ var ReportService = (function () {
       return { task_id: a.entity_id, to: after.status, time: a.timestamp, actor: after.actor };
     });
     var completedTodayIds = {};
-    changesToday.forEach(function (c) { if (c.to === S.COMPLETED && byId[c.task_id] && byId[c.task_id].status === S.COMPLETED) completedTodayIds[c.task_id] = c.time; });
+    changesToday.forEach(function (c) { if (c.to === 'COMPLETED' && byId[c.task_id] && byId[c.task_id].status === 'COMPLETED') completedTodayIds[c.task_id] = c.time; });
 
     var open = tasks.filter(function (t) { return !StateMachine.isTerminal(t.status); });
     var label = function (t) {
@@ -58,12 +58,12 @@ var ReportService = (function () {
       dueToday: AssignmentEngine.sortQueue(open.filter(function (t) { return String(t.deadline).slice(0, 10) === today && !TaskService.isOverdue(t, now); })),
       dueTomorrow: AssignmentEngine.sortQueue(open.filter(function (t) { return String(t.deadline).slice(0, 10) === tomorrow; })),
       startingToday: open.filter(function (t) { return String(t.start_date).slice(0, 10) === today; }),
-      inProgress: AssignmentEngine.sortQueue(open.filter(function (t) { return t.status === S.IN_PROGRESS; })),
-      assigned: AssignmentEngine.sortQueue(open.filter(function (t) { return t.status === S.ASSIGNED; })),
-      waiting: open.filter(function (t) { return t.status === S.WAITING; }),
-      blocked: open.filter(function (t) { return t.status === S.BLOCKED; }),
-      review: open.filter(function (t) { return t.status === S.REVIEW; }),
-      failed: open.filter(function (t) { return t.status === S.FAILED; }),
+      inProgress: AssignmentEngine.sortQueue(open.filter(function (t) { return t.status === 'IN_PROGRESS'; })),
+      assigned: AssignmentEngine.sortQueue(open.filter(function (t) { return t.status === 'ASSIGNED'; })),
+      waiting: open.filter(function (t) { return t.status === 'WAITING'; }),
+      blocked: open.filter(function (t) { return t.status === 'BLOCKED'; }),
+      review: open.filter(function (t) { return t.status === 'REVIEW'; }),
+      failed: open.filter(function (t) { return t.status === 'FAILED'; }),
       pendingApprovals: ApprovalService.pendingCount()
     };
   }
@@ -134,7 +134,7 @@ var ReportService = (function () {
     var active = c.projects.filter(function (p) { return p.status === 'ACTIVE' || p.status === 'PLANNING'; });
     var projectLines = active.map(function (p) {
       var own = c.tasks.filter(function (t) { return t.project_id === p.project_id; });
-      var done = own.filter(function (t) { return t.status === S.COMPLETED; }).length;
+      var done = own.filter(function (t) { return t.status === 'COMPLETED'; }).length;
       var over = own.filter(function (t) { return TaskService.isOverdue(t, c.now); }).length;
       var doneToday = c.completedToday.filter(function (x) { return x.task.project_id === p.project_id; }).length;
       return p.project_name + '：進捗 ' + (own.length ? Math.round(done / own.length * 100) : 0) + '%（' + done + '/' + own.length + '）' +

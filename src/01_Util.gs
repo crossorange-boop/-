@@ -73,12 +73,26 @@ var Util = (function () {
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
-  /** 入力検証エラー */
-  function ValidationError(message) {
-    this.name = 'ValidationError';
+  /**
+   * アプリケーションエラー。code で種類を区別し、画面にはメッセージだけを返す。
+   * code: VALIDATION / NOT_FOUND / CONFLICT / FORBIDDEN / LOCK_TIMEOUT / INVALID_STATE
+   */
+  function AppError(code, message) {
+    this.name = 'AppError';
+    this.code = code;
     this.message = message;
+    this.stack = new Error(message).stack;
   }
-  ValidationError.prototype = Object.create(Error.prototype);
+  AppError.prototype = Object.create(Error.prototype);
+  AppError.prototype.constructor = AppError;
+
+  /** 入力検証エラー（AppError の VALIDATION） */
+  function ValidationError(message) {
+    AppError.call(this, 'VALIDATION', message);
+    this.name = 'ValidationError';
+  }
+  ValidationError.prototype = Object.create(AppError.prototype);
+  ValidationError.prototype.constructor = ValidationError;
 
   /**
    * 値の検証。rules: { required, type: 'string'|'number'|'date'|'enum'|'url', maxLength, values }
@@ -133,6 +147,7 @@ var Util = (function () {
     joinList: joinList,
     toBool: toBool,
     escapeHtml: escapeHtml,
+    AppError: AppError,
     ValidationError: ValidationError,
     validate: validate
   };

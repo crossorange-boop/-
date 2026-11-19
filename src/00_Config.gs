@@ -138,6 +138,7 @@ var Config = (function () {
     ['QUEUE_CHECK_INTERVAL_MIN', '5', 'タスクキュー確認間隔（分）。1/5/10/15/30 のいずれか'],
     ['DEADLINE_CHECK_INTERVAL_MIN', '15', '期限・進捗確認間隔（分）。1/5/10/15/30 のいずれか'],
     ['DAILY_PLAN_HOUR', '7', '毎朝の当日タスク一覧作成時刻（時）'],
+    ['MIDDAY_CHECK_HOUR', '13', '昼の中間経過レポート作成時刻（時）'],
     ['DAILY_SUMMARY_HOUR', '17', '毎夕の進捗集計時刻（時）'],
     ['BACKUP_HOUR', '3', '毎日のバックアップ時刻（時）'],
     ['DEADLINE_WARNING_HOURS', '48', '「期限が近い」とみなす残り時間（時間）'],

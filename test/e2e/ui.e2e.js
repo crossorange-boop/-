@@ -24,6 +24,19 @@ async function main() {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     const shot = async (name) => { if (outDir) await page.screenshot({ path: path.join(outDir, name + '.png'), fullPage: true }); };
 
+    await step('ダッシュボード：今日のレポート（朝は保存済み、昼はプレビュー作成）', async () => {
+      await page.goto(BASE + '/#/dashboard');
+      await page.waitForSelector('#report-card');
+      await page.click('[data-report-tab="morning"]');
+      await page.waitForSelector('#report-body .report-text:has-text("【朝の当日タスク一覧】")');
+      await page.click('[data-report-tab="midday"]');
+      await page.waitForSelector('#report-body:has-text("まだ作成されていません")');
+      await page.click('#btn-report-preview');
+      await page.waitForSelector('#report-body .report-text:has-text("【昼の中間経過】")');
+      assert.ok(await page.isVisible('#report-body:has-text("午後に優先して進めるタスク")'));
+      await shot('dashboard-report-pc');
+    });
+
     await step('プロジェクト一覧が表示される', async () => {
       await page.goto(BASE + '/#/projects');
       await page.waitForSelector('text=コーポレートサイト刷新');
@@ -229,7 +242,7 @@ async function main() {
       const ctx = await browser.newContext({ ...devices['iPhone 13'] });
       const m = await ctx.newPage();
       m.on('pageerror', (e) => errors.push('mobile: ' + e.message));
-      for (const r of ['projects', 'tasks', 'schedule', 'approvals', 'agents', 'agents?id=AGT-CANVA', 'queue']) {
+      for (const r of ['dashboard', 'projects', 'tasks', 'schedule', 'approvals', 'agents', 'agents?id=AGT-CANVA', 'queue']) {
         await m.goto(BASE + '/#/' + r);
         await m.waitForSelector('.content .card');
         await m.waitForTimeout(200);

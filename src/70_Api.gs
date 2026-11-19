@@ -51,7 +51,29 @@ var Api = (function () {
     'notifications.markRead': { role: 'VIEWER', fn: function (x) { return NotificationService.markRead(p(x, 'ids')); } },
 
     'settings.list': { role: 'OWNER', fn: function () { return SettingsService.list(); } },
-    'settings.update': { role: 'OWNER', fn: function (x) { return SettingsService.update(p(x, 'key'), p(x, 'value')); } },
+    'settings.update': { role: 'OWNER', fn: function (x) {
+      var saved = SettingsService.update(p(x, 'key'), p(x, 'value'));
+      // 実行間隔・時刻を変えたら、登録済みのトリガーを設定どおりに作り直す
+      if (Triggers.TRIGGER_KEYS.indexOf(p(x, 'key')) >= 0 && Triggers.status().items.some(function (i) { return i.installed; })) {
+        saved.triggers_reinstalled = true;
+        Triggers.install();
+      }
+      return saved;
+    } },
+
+    'reports.latest': { role: 'VIEWER', fn: function () { return ReportService.latest(); } },
+    'reports.preview': { role: 'VIEWER', fn: function (x) { return ReportService.generate(p(x, 'kind')); } },
+    'reports.generate': { role: 'OWNER', fn: function (x) {
+      return Repository.get().withLock(function () { return ReportService.generate(p(x, 'kind'), { save: true }); });
+    } },
+    'deadline.runNow': { role: 'EDITOR', fn: function () { return DeadlineEngine.run({ triggered_by: Auth.actorName() }); } },
+    'triggers.status': { role: 'OWNER', fn: function () { return Triggers.status(); } },
+    'triggers.install': { role: 'OWNER', fn: function () { return Triggers.install(); } },
+    'triggers.uninstall': { role: 'OWNER', fn: function () { return Triggers.uninstall(); } },
+    'backup.runNow': { role: 'OWNER', fn: function () {
+      var who = Auth.actorName();
+      return Repository.get().withLock(function () { return Backup.run({ triggered_by: who }); });
+    } },
     'logs.activity': { role: 'VIEWER', fn: function (x) { return AuditService.recentActivity(Math.min(Number(p(x, 'limit')) || 50, 500)); } }
   };
 

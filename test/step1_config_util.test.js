@@ -41,9 +41,10 @@ test('タスク状態は指示書の11種類', () => {
   for (const s of Object.keys(Config.TASK_STATUS)) assert.ok(Config.TASK_STATUS_LABEL[s], s);
 });
 
-test('初期設定：朝7時・夕17時・バックアップ3時', () => {
+test('初期設定：朝7時・昼13時・夕17時・バックアップ3時', () => {
   const s = Object.fromEntries(Config.DEFAULT_SETTINGS.map((r) => [r[0], r[1]]));
   assert.strictEqual(s.DAILY_PLAN_HOUR, '7');
+  assert.strictEqual(s.MIDDAY_CHECK_HOUR, '13');
   assert.strictEqual(s.DAILY_SUMMARY_HOUR, '17');
   assert.strictEqual(s.BACKUP_HOUR, '3');
 });

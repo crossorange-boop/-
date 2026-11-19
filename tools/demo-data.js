@@ -29,6 +29,7 @@ function seedDemo(g) {
   mk(sys, '自動振り分けエンジン', 'AGT-CLAUDE-CODE', ['READY', 'ASSIGNED'], { deadline: iso(10) });
   mk(sys, '問い合わせメールの分類ルール', 'AGT-RULE-ENGINE', [], { deadline: iso(12) });
   g.AgentService.setStatus('AGT-CANVA', null, 'LIMITED', '月間の生成上限に到達（12/1 リセット）');
+  g.Repository.get().withLock(() => g.ReportService.generate('morning', { save: true }));
 }
 
 module.exports = { seedDemo };

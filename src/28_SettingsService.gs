@@ -11,6 +11,7 @@ var SettingsService = (function () {
     QUEUE_CHECK_INTERVAL_MIN: { type: 'enum', values: VALID_INTERVALS },
     DEADLINE_CHECK_INTERVAL_MIN: { type: 'enum', values: VALID_INTERVALS },
     DAILY_PLAN_HOUR: { type: 'number', min: 0, max: 23, integer: true },
+    MIDDAY_CHECK_HOUR: { type: 'number', min: 0, max: 23, integer: true },
     DAILY_SUMMARY_HOUR: { type: 'number', min: 0, max: 23, integer: true },
     BACKUP_HOUR: { type: 'number', min: 0, max: 23, integer: true },
     DEADLINE_WARNING_HOURS: { type: 'number', min: 1, max: 720 },

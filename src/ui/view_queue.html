@@ -1,0 +1,105 @@
+<script>
+/** 作業待ちキュー（担当AI別）：指示書と資料の確認・コピー、着手、成果物登録への導線 */
+(function () {
+  var esc = App.esc;
+
+  function showInstruction(task) {
+    App.modal({ title: '指示書：' + task.task_name,
+      body: '<div class="field"><label for="instruction-text">下の文章を各AIに貼り付けてください</label>' +
+        '<textarea id="instruction-text" rows="14" readonly style="font-size:13px">' + esc(task.instruction_text) + '</textarea></div>',
+      submitLabel: 'コピー',
+      onOpen: function (form) { var ta = form.querySelector('textarea'); ta.focus(); ta.select(); },
+      onSubmit: function (data, form) { return copyText(task.instruction_text, form.querySelector('textarea')); } });
+  }
+
+  /** クリップボードへコピー。使えない環境では選択状態にして手動コピーを促す */
+  function copyText(text, textarea) {
+    var fallback = function () {
+      if (textarea) { textarea.focus(); textarea.select(); }
+      try { if (document.execCommand && document.execCommand('copy')) { App.toast('コピーしました'); return; } } catch (e) { /* noop */ }
+      throw { message: '自動コピーできませんでした。文章が選択された状態なので、長押し（または Ctrl+C）でコピーしてください' };
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(function () { App.toast('指示書をコピーしました'); }).catch(function () { return fallback(); });
+    }
+    return Promise.resolve().then(fallback);
+  }
+
+  function taskCard(t) {
+    var actions = '<button class="btn" data-copy="' + esc(t.task_id) + '">指示書をコピー</button>' +
+      '<button class="btn" data-show="' + esc(t.task_id) + '">表示</button>';
+    if (App.canEdit() && t.status === 'ASSIGNED') actions += '<button class="btn primary" data-start="' + esc(t.task_id) + '">着手</button>';
+    if (App.canEdit() && t.status === 'IN_PROGRESS') actions += '<a class="btn primary" href="#/tasks?id=' + encodeURIComponent(t.task_id) + '">成果物を登録</a>';
+    var reason = String(t.waiting_reason || '');
+    var auto = reason.indexOf('[自動] ') === 0;
+    if (auto) reason = reason.slice(5);
+    return '<li style="flex-wrap:wrap"><div class="grow"><a class="title" href="#/tasks?id=' + encodeURIComponent(t.task_id) + '" style="color:inherit;text-decoration:none">' + esc(t.task_name) + '</a>' +
+      '<div style="display:flex;gap:4px;flex-wrap:wrap;margin:3px 0">' + App.statusChip(t.status) + App.priorityChip(t.priority) +
+        (t.is_overdue ? '<span class="chip critical">' + App.icon('alert') + ' 期限超過</span>' : '') + '</div>' +
+      '<div class="meta">' + esc(t.project_name) + (t.deadline ? ' ・ 期限 ' + App.fmtDate(t.deadline, true) : '') +
+      (t.reference_urls.length ? ' ・ 資料 ' + t.reference_urls.length + '件' : '') + (t.has_instruction ? '' : ' ・ <span style="color:var(--warn)">指示書未入力</span>') + '</div>' +
+      (reason ? '<div class="meta">理由' + (auto ? '（自動判定）' : '') + '：' + esc(reason) + '</div>' : '') + '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + actions + '</div></li>';
+  }
+
+  function laneHtml(lane) {
+    var c = lane.counts;
+    var status = !lane.enabled ? '<span class="chip">停止中（無効）</span>' : lane.usable ? '<span class="chip good">● 利用可能</span>'
+      : '<span class="chip warn" title="' + esc(lane.unusable_reason) + '">● ' + (lane.unusable_reason.indexOf('利用制限') >= 0 ? '利用制限中' : '利用不可') + '</span>';
+    return '<div class="card section" id="lane-' + esc(lane.agent_id) + '"><h2>' + esc(lane.agent_name) + ' ' + status +
+      '<span class="sub" style="margin-left:auto">割当 ' + c.assigned + ' ・ 作業中 ' + c.in_progress + ' ・ 待機 ' + c.waiting + ' ・ 確認中 ' + c.review + '</span></h2>' +
+      (lane.tasks.length ? '<ul class="list">' + lane.tasks.map(taskCard).join('') + '</ul>' : '<div class="empty-state">キューは空です</div>') + '</div>';
+  }
+
+  App.registerView('queue', {
+    title: '作業待ちキュー',
+    render: function (el, params) {
+      return App.call('queue.byAgent').then(function (q) {
+        if (App.canEdit()) App.setActions('<button class="btn primary" id="btn-run-queue">今すぐ振り分け</button>');
+        var active = params.agent || '';
+        var lanes = q.lanes.filter(function (l) { return !active || l.agent_id === active; });
+        var chips = '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px">' +
+          '<a class="chip" style="text-decoration:none;' + (!active ? 'background:var(--accent);color:var(--accent-ink)' : '') + '" href="#/queue">すべて</a>' +
+          q.lanes.map(function (l) {
+            var n = l.tasks.length;
+            return '<a class="chip" style="text-decoration:none;' + (active === l.agent_id ? 'background:var(--accent);color:var(--accent-ink)' : '') + '" href="#/queue?agent=' + encodeURIComponent(l.agent_id) + '">' +
+              esc(l.agent_name) + ' <b class="num">' + n + '</b></a>';
+          }).join('') + '</div>';
+        var info = '<div class="muted" style="font-size:12px">' +
+          (q.last_run ? '前回の自動振り分け：' + App.fmtDate(q.last_run.time, true) + '（' + esc(q.last_run.summary || q.last_run.result) + '）' : '自動振り分けはまだ実行されていません') +
+          (q.unassigned_backlog ? ' ／ 未割当のタスク ' + q.unassigned_backlog + '件' : '') + '</div>';
+        el.innerHTML = chips + info + lanes.map(laneHtml).join('');
+
+        var all = {};
+        q.lanes.forEach(function (l) { l.tasks.forEach(function (t) { all[t.task_id] = t; }); });
+        el.querySelectorAll('[data-copy]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var t = all[b.getAttribute('data-copy')];
+            copyText(t.instruction_text).catch(function () { showInstruction(t); });
+          });
+        });
+        el.querySelectorAll('[data-show]').forEach(function (b) { b.addEventListener('click', function () { showInstruction(all[b.getAttribute('data-show')]); }); });
+        el.querySelectorAll('[data-start]').forEach(function (b) {
+          b.addEventListener('click', function () {
+            var t = all[b.getAttribute('data-start')];
+            b.disabled = true;
+            App.call('tasks.changeStatus', { task_id: t.task_id, status: 'IN_PROGRESS', reason: '作業待ちキューから着手', row_version: t.row_version })
+              .then(function () { App.toast('作業中にしました'); App.render(); })
+              .catch(function (e) { b.disabled = false; App.showError(e); });
+          });
+        });
+        var run = document.getElementById('btn-run-queue');
+        if (run) run.addEventListener('click', function () {
+          run.disabled = true;
+          App.call('queue.runNow').then(function (r) {
+            if (r.skipped) { App.toast(r.reason); return; }
+            App.toast('振り分け完了：割当 ' + r.assigned + '件・分類 ' + r.classified + '件・待機 ' + r.waiting + '件・復旧 ' + r.recovered + '件' +
+              (r.needs_classification ? '・要手動分類 ' + r.needs_classification + '件' : '') + (r.errors ? '・エラー ' + r.errors + '件' : ''));
+            App.render();
+          }).catch(function (e) { run.disabled = false; App.showError(e); });
+        });
+      });
+    }
+  });
+})();
+</script>

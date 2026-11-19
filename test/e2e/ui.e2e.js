@@ -204,11 +204,32 @@ async function main() {
       await page.waitForSelector('.card:has-text("Ollama") .chip:has-text("停止中（無効）")');
     });
 
+    await step('作業待ちキュー：今すぐ振り分け → AI別に表示 → 指示書表示 → 着手', async () => {
+      await page.goto(BASE + '/#/queue');
+      await page.waitForSelector('#btn-run-queue');
+      await page.click('#btn-run-queue');
+      await page.waitForSelector('.toast:has-text("振り分け完了")');
+      await page.waitForSelector('#lane-AGT-RULE-ENGINE li:has-text("問い合わせメールの分類ルール")');
+      await page.waitForSelector('text=前回の自動振り分け');
+      await shot('queue-pc');
+      await page.click('#lane-AGT-RULE-ENGINE [data-show]');
+      const text = await page.$eval('#instruction-text', (t) => t.value);
+      assert.ok(text.includes('【作業依頼】問い合わせメールの分類ルール'));
+      await page.click('.modal [data-cancel]');
+      await page.click('#lane-AGT-RULE-ENGINE [data-start]');
+      await page.waitForSelector('.toast:has-text("作業中にしました")');
+      await page.waitForSelector('#lane-AGT-RULE-ENGINE .chip:has-text("作業中")');
+      // Canva は利用制限中なので、Canva 担当の割当済みタスクは利用待ちになっている
+      await page.goto(BASE + '/#/queue?agent=AGT-CANVA');
+      await page.waitForSelector('#lane-AGT-CANVA');
+      assert.ok(await page.isVisible('#lane-AGT-CANVA .chip:has-text("外部AIの利用待ち")'));
+    });
+
     await step('スマホ幅で各画面が横にはみ出さない', async () => {
       const ctx = await browser.newContext({ ...devices['iPhone 13'] });
       const m = await ctx.newPage();
       m.on('pageerror', (e) => errors.push('mobile: ' + e.message));
-      for (const r of ['projects', 'tasks', 'schedule', 'approvals', 'agents', 'agents?id=AGT-CANVA']) {
+      for (const r of ['projects', 'tasks', 'schedule', 'approvals', 'agents', 'agents?id=AGT-CANVA', 'queue']) {
         await m.goto(BASE + '/#/' + r);
         await m.waitForSelector('.content .card');
         await m.waitForTimeout(200);

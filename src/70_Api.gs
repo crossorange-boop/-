@@ -28,6 +28,8 @@ var Api = (function () {
     'tasks.changeStatus': { role: 'EDITOR', fn: function (x) { return TaskService.changeStatus(p(x, 'task_id'), p(x, 'status'), p(x, 'reason'), p(x, 'row_version')); } },
     'tasks.remove': { role: 'EDITOR', fn: function (x) { return TaskService.remove(p(x, 'task_id')); } },
 
+    'queue.byAgent': { role: 'VIEWER', fn: function () { return WorkQueueService.byAgent(); } },
+    'queue.runNow': { role: 'EDITOR', fn: function () { return WorkQueueService.runNow(); } },
     'schedule.timeline': { role: 'VIEWER', fn: function (x) { return ScheduleService.timeline(p(x, 'filter')); } },
 
     'agents.list': { role: 'VIEWER', fn: function () { return AgentService.list(); } },

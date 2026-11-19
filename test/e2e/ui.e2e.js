@@ -1,0 +1,189 @@
+/**
+ * 画面の結合テスト（ブラウザ操作）。プレビューサーバーを起動して実行する。
+ *   node test/e2e/ui.e2e.js [スクリーンショット出力先]
+ */
+const { chromium, devices } = require('playwright');
+const { spawn } = require('child_process');
+const path = require('path');
+const assert = require('assert');
+
+const PORT = 8790;
+const BASE = 'http://localhost:' + PORT;
+const outDir = process.argv[2] || null;
+
+async function main() {
+  const server = spawn('node', [path.join(__dirname, '../../tools/preview-server.js'), String(PORT)], { stdio: 'pipe' });
+  await new Promise((res) => server.stdout.once('data', res));
+  const browser = await chromium.launch();
+  const errors = [];
+  const results = [];
+  const step = async (name, fn) => { await fn(); results.push('ok - ' + name); };
+  try {
+    const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
+    page.on('pageerror', (e) => errors.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+    const shot = async (name) => { if (outDir) await page.screenshot({ path: path.join(outDir, name + '.png'), fullPage: true }); };
+
+    await step('プロジェクト一覧が表示される', async () => {
+      await page.goto(BASE + '/#/projects');
+      await page.waitForSelector('text=コーポレートサイト刷新');
+      await shot('projects-pc');
+    });
+
+    await step('プロジェクトを登録し詳細へ移動', async () => {
+      await page.click('#btn-new-project');
+      await page.fill('#f_project_name', 'E2Eテスト案件');
+      await page.fill('#f_goal', '画面から登録できること');
+      await page.selectOption('#f_priority', 'HIGH');
+      await page.fill('#f_deadline', '2030-12-31');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('h1:has-text("E2Eテスト案件")');
+    });
+    const projectUrl = page.url();
+
+    await step('必須項目未入力はエラー表示', async () => {
+      await page.click('text=タスク追加');
+      await page.waitForSelector('.modal');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.modal [data-error]:has-text("必須項目")');
+      await page.click('.modal [data-cancel]');
+    });
+
+    await step('タスクAを登録（担当AI指定）', async () => {
+      await page.goto(projectUrl);
+      await page.click('text=タスク追加');
+      await page.waitForSelector('#f_task_name');
+      await page.fill('#f_task_name', 'E2E 設計');
+      await page.selectOption('#f_assigned_agent_id', 'AGT-CLAUDE-CODE');
+      await page.fill('#f_instruction', 'GASで実装すること');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('h1:has-text("E2E 設計")');
+    });
+    const taskAUrl = page.url();
+
+    await step('タスクBを依存付きで登録し、前提未完了では着手できない', async () => {
+      await page.goto(BASE + '/#/tasks');
+      await page.waitForSelector('#btn-new-task');
+      await page.click('#btn-new-task');
+      await page.waitForSelector('#f_task_name');
+      const projectValue = await page.$eval('#f_project_id', (s) => Array.from(s.options).find((o) => o.text === 'E2Eテスト案件').value);
+      await page.selectOption('#f_project_id', projectValue);
+      await page.fill('#f_task_name', 'E2E 実装');
+      await page.selectOption('#f_assigned_agent_id', 'AGT-CLAUDE-CODE');
+      const depValue = await page.$eval('#f_dependency_task_ids', (s) => Array.from(s.options).find((o) => o.text.startsWith('E2E 設計')).value);
+      await page.selectOption('#f_dependency_task_ids', [depValue]);
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('h1:has-text("E2E 実装")');
+      await page.waitForSelector('text=先に完了が必要');
+      assert.ok(await page.isVisible('.card a:has-text("E2E 設計")'));
+      await page.click('[data-status="READY"]');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.modal [data-error]:has-text("前提タスクが完了していません")');
+      await page.click('.modal [data-cancel]');
+      await shot('task-detail-pc');
+    });
+
+    await step('理由必須の状態変更（WAITING）は理由なしだと止まる', async () => {
+      await page.goto(taskAUrl);
+      await page.waitForSelector('[data-status="WAITING"]');
+      await page.click('[data-status="WAITING"]');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.modal [data-error]:has-text("必須項目")');
+      await page.click('.modal [data-cancel]');
+    });
+
+    await step('タスクAを作業中まで進め、成果物登録で成果物確認中へ', async () => {
+      for (const s of ['READY', 'ASSIGNED', 'IN_PROGRESS']) {
+        await page.click('[data-status="' + s + '"]');
+        await page.click('.modal button[type=submit]');
+        await page.waitForSelector('.toast:has-text("状態を変更しました")');
+        await page.waitForSelector('[data-status]');
+      }
+      await page.click('#btn-deliverable');
+      await page.fill('#f_file_name', '設計書.pdf');
+      await page.fill('#f_file_url', 'https://drive.google.com/file/d/e2e');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.card .chip:has-text("成果物確認中")');
+      await page.waitForSelector('text=設計書.pdf');
+    });
+
+    await step('成果物・承認画面で成果物を承認するとタスク完了、後続が着手可能に', async () => {
+      await page.goto(BASE + '/#/approvals');
+      await page.waitForSelector('text=確認待ちの成果物');
+      await shot('approvals-pc');
+      await page.click('[data-dok][data-name="設計書.pdf"]');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.toast:has-text("承認しました")');
+      await page.goto(taskAUrl);
+      await page.waitForSelector('.card .chip:has-text("完了")');
+    });
+
+    await step('承認待ち（人間の承認）を承認できる', async () => {
+      await page.goto(BASE + '/#/approvals');
+      await page.waitForSelector('[data-approve]');
+      const before = await page.$$eval('[data-approve]', (b) => b.length);
+      await page.click('[data-approve] >> nth=0');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.toast:has-text("承認しました")');
+      await page.waitForTimeout(300);
+      const after = await page.$$eval('[data-approve]', (b) => b.length);
+      assert.strictEqual(after, before - 1);
+    });
+
+    await step('タスク一覧の絞り込み（期限超過のみ）', async () => {
+      await page.goto(BASE + '/#/tasks');
+      await page.waitForSelector('#task-filter');
+      await page.check('#task-filter input[name=overdue]');
+      await page.waitForFunction(() => location.hash.includes('overdue=1'));
+      // 再描画後の一覧が表示されるまで待つ（件数表示で判定）
+      await page.waitForFunction(() => /^\d+件$/.test((document.querySelector('.card.section > .muted:last-child') || {}).textContent || '') && !document.querySelector('.loading'));
+      await page.waitForTimeout(300);
+      const n = await page.$$eval('table.data tbody tr', (r) => r.length);
+      assert.strictEqual(n, 2);
+      const names = await page.$$eval('table.data tbody tr td:first-child a', (a) => a.map((x) => x.textContent).sort());
+      assert.deepStrictEqual(names, ['キャンペーンバナー', 'トップページのデザイン案'].sort());
+      await shot('tasks-pc');
+    });
+
+    await step('スケジュール画面：期限超過グループと後続への影響', async () => {
+      await page.goto(BASE + '/#/schedule');
+      await page.waitForSelector('.date-group.critical');
+      assert.ok(await page.isVisible('text=後続への影響 1件'));
+      await shot('schedule-pc');
+    });
+
+    await step('スマホ幅で各画面が横にはみ出さない', async () => {
+      const ctx = await browser.newContext({ ...devices['iPhone 13'] });
+      const m = await ctx.newPage();
+      m.on('pageerror', (e) => errors.push('mobile: ' + e.message));
+      for (const r of ['projects', 'tasks', 'schedule', 'approvals']) {
+        await m.goto(BASE + '/#/' + r);
+        await m.waitForSelector('.content .card');
+        await m.waitForTimeout(200);
+        const overflow = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        assert.ok(overflow <= 0, r + ' overflow ' + overflow);
+        if (outDir) await m.screenshot({ path: path.join(outDir, r + '-mobile.png'), fullPage: false });
+      }
+      await m.goto(BASE + '/#/tasks');
+      await m.waitForSelector('#btn-new-task');
+      await m.click('#btn-new-task');
+      await m.waitForSelector('.modal #f_task_name');
+      if (outDir) await m.screenshot({ path: path.join(outDir, 'task-form-mobile.png') });
+      await ctx.close();
+    });
+
+    assert.deepStrictEqual(errors, [], 'ブラウザでエラー: ' + errors.join(' / '));
+    results.push('ok - ブラウザのエラーなし');
+    console.log(results.join('\n'));
+    console.log('# e2e pass ' + results.length);
+  } catch (e) {
+    console.log(results.join('\n'));
+    console.error('not ok - ' + e.message);
+    try { const pg = browser.contexts()[0].pages()[0]; console.error('modal error:', await pg.$eval('.modal [data-error]', (x) => x.textContent).catch(() => '(none)'), 'url:', pg.url()); } catch (ignore) {}
+    process.exitCode = 1;
+  } finally {
+    await browser.close();
+    server.kill();
+  }
+}
+main();

@@ -55,9 +55,9 @@ test('ダッシュボード集計：4分類・期限超過・期限間近・AI�
   seedDemo(g);
   const s = g.api('dashboard.summary').data;
   assert.strictEqual(s.project_count, 4);
-  assert.strictEqual(s.task_count, 10);
+  assert.strictEqual(s.task_count, 11);
   const grp = Object.fromEntries(s.groups.map((x) => [x.key, x.count]));
-  assert.deepStrictEqual(grp, { NOT_STARTED: 3, IN_PROGRESS: 4, ON_HOLD: 1, COMPLETED: 2 });
+  assert.deepStrictEqual(grp, { NOT_STARTED: 3, IN_PROGRESS: 5, ON_HOLD: 1, COMPLETED: 2 });
   assert.strictEqual(s.groups.reduce((n, x) => n + x.count, 0), s.task_count);
   assert.deepStrictEqual(Array.from(s.overdue.map((t) => t.task_name)).sort(), ['キャンペーンバナー', 'トップページのデザイン案'].sort());
   assert.ok(s.due_soon.some((t) => t.task_name === 'サイト構成とGASフォーム実装'));

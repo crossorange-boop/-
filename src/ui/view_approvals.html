@@ -1,0 +1,83 @@
+<script>
+/** F. 成果物・承認管理（承認待ち・成果物一覧・処理済み） */
+(function () {
+  var esc = App.esc;
+  var REVIEW_LABEL = { PENDING: '確認待ち', APPROVED: '承認', REJECTED: '差し戻し' };
+  var APPROVAL_LABEL = { PENDING: '承認待ち', APPROVED: '承認済み', REJECTED: '差し戻し', CANCELLED: '取消' };
+
+  function tabs(active, pendingCount, reviewCount) {
+    var t = [['pending', '承認待ち', pendingCount], ['deliverables', '成果物', reviewCount], ['history', '承認履歴', 0]];
+    return '<nav class="tabs">' + t.map(function (x) {
+      return '<a href="#/approvals?tab=' + x[0] + '" class="' + (active === x[0] ? 'active' : '') + '">' + esc(x[1]) +
+        (x[2] ? ' <span class="badge num" style="height:18px;min-width:18px;font-size:10.5px">' + x[2] + '</span>' : '') + '</a>';
+    }).join('') + '</nav>';
+  }
+
+  function decide(kind, id, decision, name) {
+    var approve = decision === 'APPROVED';
+    App.confirmDialog(approve ? '承認' : '差し戻し', '「' + name + '」を' + (approve ? '承認' : '差し戻し') + 'します。',
+      { reason: true, reasonRequired: !approve, reasonLabel: approve ? 'コメント（任意）' : '差し戻し理由（必須）', submitLabel: approve ? '承認する' : '差し戻す', danger: !approve,
+        action: function (d) {
+          if (kind === 'deliverable') return App.call('deliverables.review', { deliverable_id: id, decision: decision, comment: d.reason });
+          return App.call(approve ? 'approvals.approve' : 'approvals.reject', { approval_id: id, comment: d.reason });
+        } })
+      .then(function () { App.toast(approve ? '承認しました' : '差し戻しました'); App.render(); });
+  }
+
+  function approvalItem(a, withButtons) {
+    var target = a.task_name ? '<a href="#/tasks?id=' + encodeURIComponent(a.task_id) + '">' + esc(a.task_name) + '</a>' : esc(a.target_id || '');
+    var payload = {};
+    try { payload = a.payload_json ? JSON.parse(a.payload_json) : {}; } catch (e) { payload = {}; }
+    var title = a.action_label + '：' + (a.task_name || payload.project_name || payload.task_name || a.target_id || '');
+    return '<li><div class="grow"><div class="title">' + esc(title) + '</div>' +
+      '<div class="meta">' + (a.task_name ? '対象タスク：' + target + ' ・ ' : '') + '依頼 ' + App.fmtDate(a.requested_at, true) +
+      (a.approver ? ' ・ ' + esc(a.approver.split('@')[0]) + ' が ' + App.fmtDate(a.approved_at, true) + ' に処理' : '') + '</div>' +
+      (a.comment ? '<div class="meta" style="white-space:pre-wrap">' + esc(a.comment) + '</div>' : '') + '</div>' +
+      (withButtons && App.isOwner()
+        ? '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn primary" data-approve="' + esc(a.approval_id) + '" data-name="' + esc(title) + '">承認</button>' +
+          '<button class="btn danger" data-reject="' + esc(a.approval_id) + '" data-name="' + esc(title) + '">差し戻し</button></div>'
+        : '<span class="chip ' + (a.approval_status === 'APPROVED' ? 'good' : a.approval_status === 'REJECTED' ? 'critical' : 'warn') + '">' + esc(APPROVAL_LABEL[a.approval_status] || a.approval_status) + '</span>') +
+      '</li>';
+  }
+
+  function deliverableItem(d) {
+    var cls = d.review_status === 'APPROVED' ? 'good' : d.review_status === 'REJECTED' ? 'critical' : 'warn';
+    return '<li><div class="grow"><a class="title" href="' + esc(d.file_url) + '" target="_blank" rel="noopener noreferrer">' + esc(d.file_name) + '</a> <span class="chip">v' + esc(d.version) + '</span>' +
+      '<div class="meta"><a href="#/tasks?id=' + encodeURIComponent(d.task_id) + '">' + esc(d.task_name) + '</a> ・ ' + esc(d.submitted_by) + ' ・ ' + App.fmtDate(d.submitted_at, true) + '</div>' +
+      (d.review_comment ? '<div class="meta">' + esc(d.review_comment) + '</div>' : '') + '</div>' +
+      (d.review_status === 'PENDING' && App.canEdit()
+        ? '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn primary" data-dok="' + esc(d.deliverable_id) + '" data-name="' + esc(d.file_name) + '">承認</button>' +
+          '<button class="btn danger" data-dng="' + esc(d.deliverable_id) + '" data-name="' + esc(d.file_name) + '">差し戻し</button></div>'
+        : '<span class="chip ' + cls + '">' + esc(REVIEW_LABEL[d.review_status] || d.review_status) + '</span>') + '</li>';
+  }
+
+  App.registerView('approvals', {
+    title: '成果物・承認',
+    render: function (el, params) {
+      var tab = params.tab || 'pending';
+      return Promise.all([App.call('approvals.list', {}), App.call('deliverables.list', {})]).then(function (r) {
+        var approvals = r[0], deliverables = r[1];
+        var pending = approvals.filter(function (a) { return a.approval_status === 'PENDING'; });
+        var reviewWaiting = deliverables.filter(function (d) { return d.review_status === 'PENDING'; });
+        App.state.pendingApprovals = pending.length;
+        var body;
+        if (tab === 'deliverables') {
+          body = '<div class="card">' + (deliverables.length ? '<ul class="list">' + deliverables.map(deliverableItem).join('') + '</ul>' : '<div class="empty-state">成果物はまだありません</div>') + '</div>';
+        } else if (tab === 'history') {
+          var done = approvals.filter(function (a) { return a.approval_status !== 'PENDING'; });
+          body = '<div class="card">' + (done.length ? '<ul class="list">' + done.map(function (a) { return approvalItem(a, false); }).join('') + '</ul>' : '<div class="empty-state">承認履歴はありません</div>') + '</div>';
+        } else {
+          body = (App.isOwner() ? '' : '<div class="card muted section" style="margin-top:0;margin-bottom:12px">承認・差し戻しはオーナーのみ操作できます。</div>') +
+            '<div class="card">' + (pending.length ? '<ul class="list">' + pending.map(function (a) { return approvalItem(a, true); }).join('') + '</ul>' : '<div class="empty-state">承認待ちはありません</div>') + '</div>' +
+            (reviewWaiting.length ? '<div class="date-group">確認待ちの成果物 <span class="muted num">' + reviewWaiting.length + '件</span></div><div class="card"><ul class="list">' + reviewWaiting.map(deliverableItem).join('') + '</ul></div>' : '');
+        }
+        el.innerHTML = tabs(tab, pending.length, reviewWaiting.length) + body;
+        el.querySelectorAll('[data-approve]').forEach(function (b) { b.addEventListener('click', function () { decide('approval', b.getAttribute('data-approve'), 'APPROVED', b.getAttribute('data-name')); }); });
+        el.querySelectorAll('[data-reject]').forEach(function (b) { b.addEventListener('click', function () { decide('approval', b.getAttribute('data-reject'), 'REJECTED', b.getAttribute('data-name')); }); });
+        el.querySelectorAll('[data-dok]').forEach(function (b) { b.addEventListener('click', function () { decide('deliverable', b.getAttribute('data-dok'), 'APPROVED', b.getAttribute('data-name')); }); });
+        el.querySelectorAll('[data-dng]').forEach(function (b) { b.addEventListener('click', function () { decide('deliverable', b.getAttribute('data-dng'), 'REJECTED', b.getAttribute('data-name')); }); });
+      });
+    }
+  });
+})();
+</script>

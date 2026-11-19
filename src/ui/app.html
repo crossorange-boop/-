@@ -80,6 +80,7 @@ var App = (function () {
   }
 
   function toast(message, isError) {
+    document.querySelectorAll('.toast').forEach(function (t) { t.remove(); });
     var el = document.createElement('div');
     el.className = 'toast' + (isError ? ' error' : '');
     el.setAttribute('role', isError ? 'alert' : 'status');
@@ -174,6 +175,129 @@ var App = (function () {
 
   function registerView(route, def) { state.views[route] = def; }
 
+  // ---- フォーム部品 ----
+  /** opts: { name, label, idPrefix（既定 f_。同じ画面に同名の欄がある場合に変える）, type, value, options:[{value,label}], required, hint, multiple, placeholder, rows } */
+  function field(o) {
+    var id = (o.idPrefix || 'f_') + o.name;
+    var req = o.required ? ' required' : '';
+    var label = '<label for="' + id + '">' + esc(o.label) + (o.required ? ' <span style="color:var(--critical)">*</span>' : '') + '</label>';
+    var v = o.value === undefined || o.value === null ? '' : o.value;
+    var input;
+    if (o.type === 'textarea') {
+      input = '<textarea id="' + id + '" name="' + o.name + '" rows="' + (o.rows || 4) + '"' + req + ' placeholder="' + esc(o.placeholder || '') + '">' + esc(v) + '</textarea>';
+    } else if (o.type === 'select') {
+      var selected = o.multiple ? String(v).split(',').filter(Boolean) : [String(v)];
+      input = '<select id="' + id + '" name="' + o.name + '"' + req + (o.multiple ? ' multiple size="' + Math.min(6, Math.max(3, o.options.length)) + '"' : '') + '>' +
+        o.options.map(function (op) {
+          return '<option value="' + esc(op.value) + '"' + (selected.indexOf(String(op.value)) >= 0 ? ' selected' : '') + '>' + esc(op.label) + '</option>';
+        }).join('') + '</select>';
+    } else {
+      var type = o.type || 'text';
+      var val = type === 'date' ? String(v).slice(0, 10) : v;
+      input = '<input id="' + id + '" name="' + o.name + '" type="' + type + '" value="' + esc(val) + '"' + req +
+        (type === 'number' ? ' step="any" min="0" inputmode="decimal"' : '') + ' placeholder="' + esc(o.placeholder || '') + '">';
+    }
+    return '<div class="field">' + label + input + (o.hint ? '<div class="hint">' + esc(o.hint) + '</div>' : '') + '</div>';
+  }
+
+  /** フォームの値をオブジェクトにする（複数選択はカンマ区切り） */
+  function formData(form) {
+    var out = {};
+    Array.prototype.forEach.call(form.elements, function (el) {
+      if (!el.name) return;
+      if (el.tagName === 'SELECT' && el.multiple) {
+        out[el.name] = Array.prototype.filter.call(el.options, function (o) { return o.selected; }).map(function (o) { return o.value; }).join(',');
+      } else if (el.type === 'checkbox') {
+        out[el.name] = el.checked;
+      } else {
+        out[el.name] = el.value;
+      }
+    });
+    return out;
+  }
+
+  /**
+   * モーダル表示。opts: { title, body, submitLabel, danger, onSubmit(data, form) → Promise }
+   * onSubmit が成功したら閉じる。失敗時はメッセージを表示して開いたまま。
+   */
+  function modal(opts) {
+    var back = document.createElement('div');
+    back.className = 'modal-backdrop';
+    back.innerHTML = '<div class="modal" role="dialog" aria-modal="true" aria-label="' + esc(opts.title) + '">' +
+      '<h3>' + esc(opts.title) + '</h3><form class="form" novalidate>' + opts.body +
+      '<div class="error-box" style="display:none" data-error></div>' +
+      '<div class="actions"><button type="button" class="btn" data-cancel>キャンセル</button>' +
+      (opts.onSubmit ? '<button type="submit" class="btn primary"' + (opts.danger ? ' style="background:var(--critical);border-color:var(--critical);color:#fff"' : '') + '>' + esc(opts.submitLabel || '保存') + '</button>' : '') +
+      '</div></form></div>';
+    document.body.appendChild(back);
+    var form = back.querySelector('form');
+    var close = function () { back.remove(); document.removeEventListener('keydown', onKey); };
+    var onKey = function (e) { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    back.addEventListener('click', function (e) { if (e.target === back) close(); });
+    back.querySelector('[data-cancel]').addEventListener('click', close);
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var missing = Array.prototype.filter.call(form.querySelectorAll('[required]'), function (el) { return !String(el.value).trim(); });
+      var errBox = form.querySelector('[data-error]');
+      if (missing.length) {
+        errBox.textContent = '必須項目を入力してください';
+        errBox.style.display = 'block';
+        missing[0].focus();
+        return;
+      }
+      var btn = form.querySelector('button[type=submit]');
+      btn.disabled = true;
+      Promise.resolve(opts.onSubmit(formData(form), form)).then(function () { close(); })
+        .catch(function (err) {
+          errBox.textContent = (err && err.message) || 'エラーが発生しました';
+          errBox.style.display = 'block';
+          btn.disabled = false;
+        });
+    });
+    var first = form.querySelector('input,select,textarea');
+    if (first && window.innerWidth > 860) first.focus();
+    if (opts.onOpen) opts.onOpen(form);
+    return { close: close, form: form };
+  }
+
+  /** 確認ダイアログ（理由入力つきも可）。opts.action(data) → Promise で処理まで行う */
+  function confirmDialog(title, message, opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      modal({
+        title: title,
+        body: '<p style="margin:0">' + esc(message) + '</p>' +
+          (opts.reason ? field({ name: 'reason', label: opts.reasonLabel || '理由', type: 'textarea', rows: 3, required: !!opts.reasonRequired }) : ''),
+        submitLabel: opts.submitLabel || 'OK', danger: opts.danger,
+        // opts.action があれば実行し、失敗時はダイアログ内にエラーを表示して開いたままにする
+        onSubmit: function (data) {
+          if (!opts.action) { resolve(data); return; }
+          return Promise.resolve(opts.action(data)).then(function (result) { resolve(result); });
+        }
+      });
+    });
+  }
+
+  function canEdit() { return state.boot && (state.boot.user.role === 'OWNER' || state.boot.user.role === 'EDITOR'); }
+  function isOwner() { return state.boot && state.boot.user.role === 'OWNER'; }
+
+  /** 共通の参照データ（プロジェクト・AI）を取得 */
+  function loadRefs() {
+    return Promise.all([call('projects.list'), call('agents.list')]).then(function (r) {
+      return { projects: r[0], agents: r[1],
+        projectName: function (id) { var p = r[0].filter(function (x) { return x.project_id === id; })[0]; return p ? p.project_name : ''; },
+        agentName: function (id) { var a = r[1].filter(function (x) { return x.agent_id === id; })[0]; return a ? a.agent_name : ''; } };
+    });
+  }
+
+  function go(hash) { if (location.hash === hash) render(); else location.hash = hash; }
+
+  function progressBar(pct) {
+    return '<div style="height:8px;background:var(--surface-2);border-radius:4px;overflow:hidden" role="img" aria-label="進捗 ' + pct + '%">' +
+      '<div style="height:100%;width:' + pct + '%;background:var(--series-3);border-radius:0 4px 4px 0"></div></div>';
+  }
+
   function start() {
     document.getElementById('btn-refresh').innerHTML = icon('refresh');
     document.getElementById('btn-refresh').addEventListener('click', render);
@@ -193,7 +317,9 @@ var App = (function () {
     state: state, NAV: NAV, call: call, esc: esc, icon: icon, fmtDate: fmtDate, statusLabel: statusLabel,
     statusChip: statusChip, priorityChip: priorityChip, toast: toast, showError: showError,
     setTitle: setTitle, setActions: setActions, registerView: registerView, updateCounts: updateCounts,
-    render: render, start: start, PRIORITY_LABEL: PRIORITY_LABEL
+    render: render, start: start, PRIORITY_LABEL: PRIORITY_LABEL,
+    field: field, formData: formData, modal: modal, confirmDialog: confirmDialog, canEdit: canEdit, isOwner: isOwner,
+    loadRefs: loadRefs, go: go, progressBar: progressBar
   };
 })();
 </script>

@@ -5,6 +5,8 @@
   "description": "AI統合管制システム（Google Apps Script + Google Sheets）",
   "scripts": {
     "test": "node --test \"test/**/*.test.js\"",
+    "e2e": "node test/e2e/ui.e2e.js",
+    "preview": "node tools/preview-server.js 8787",
     "push": "clasp push",
     "deploy": "clasp deploy"
   },

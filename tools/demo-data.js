@@ -23,6 +23,8 @@ function seedDemo(g) {
   mk(sns, '投稿カレンダー作成', 'AGT-MUSE', ['READY', 'ASSIGNED', 'IN_PROGRESS', 'REVIEW', 'COMPLETED'], { deadline: iso(-5) });
   mk(sns, 'リール用キャプション10本', 'AGT-MUSE', ['READY', 'ASSIGNED', 'IN_PROGRESS', 'REVIEW', 'APPROVAL'], { deadline: iso(2) });
   mk(sns, 'キャンペーンバナー', 'AGT-CANVA', ['READY'], { deadline: iso(-1), priority: 'CRITICAL' });
+  const lp = mk(sns, 'キャンペーンLPの文章', 'AGT-MUSE', ['READY', 'ASSIGNED', 'IN_PROGRESS'], { deadline: iso(3) });
+  g.DeliverableService.register({ task_id: lp.task_id, file_name: 'LP原稿.docx', file_url: 'https://drive.google.com/file/d/demo1' });
   mk(sys, 'データ構造の設計', 'AGT-CLAUDE-CODE', ['READY', 'ASSIGNED', 'IN_PROGRESS', 'REVIEW', 'COMPLETED']);
   mk(sys, '自動振り分けエンジン', 'AGT-CLAUDE-CODE', ['READY', 'ASSIGNED'], { deadline: iso(10) });
   mk(sys, '問い合わせメールの分類ルール', 'AGT-RULE-ENGINE', [], { deadline: iso(12) });

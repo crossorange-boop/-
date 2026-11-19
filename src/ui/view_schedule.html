@@ -1,0 +1,94 @@
+<script>
+/** E. スケジュール管理（開始予定・期限・期限超過・依存関係） */
+(function () {
+  var esc = App.esc;
+  var DAY = 86400000;
+  var WINDOW_BEFORE = 14, WINDOW_AFTER = 56; // 簡易ガントの表示範囲（日）
+
+  function dayNum(iso) {
+    var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / DAY : null;
+  }
+
+  function groupOf(item, today) {
+    if (item.status === 'COMPLETED') return 'done';
+    if (item.is_overdue) return 'overdue';
+    var d = dayNum(item.deadline);
+    if (d === null) return 'none';
+    if (d === today) return 'today';
+    if (d - today <= 7) return 'week';
+    return 'later';
+  }
+  var GROUPS = [
+    { key: 'overdue', label: '期限超過', cls: 'critical' }, { key: 'today', label: '今日が期限' },
+    { key: 'week', label: '7日以内' }, { key: 'later', label: '8日以降' },
+    { key: 'none', label: '期限未設定' }, { key: 'done', label: '完了' }
+  ];
+
+  function gantt(item, today) {
+    var s = dayNum(item.start_date), e = dayNum(item.deadline);
+    if (s === null && e === null) return '';
+    if (s === null) s = e; if (e === null) e = s;
+    var lo = today - WINDOW_BEFORE, hi = today + WINDOW_AFTER, span = hi - lo;
+    var a = Math.max(lo, Math.min(s, e)), b = Math.min(hi, Math.max(s, e));
+    if (b < lo || a > hi) return '';
+    var left = (a - lo) / span * 100, width = Math.max((b - a + 1) / span * 100, 1);
+    return '<div class="gantt pc-only" data-tip="' + esc((item.start_date ? App.fmtDate(item.start_date) : '—') + ' 〜 ' + (item.deadline ? App.fmtDate(item.deadline) : '—')) + '">' +
+      '<div class="bar' + (item.is_overdue ? ' over' : '') + '" style="left:' + left + '%;width:' + width + '%"></div>' +
+      '<div class="today" style="left:' + (WINDOW_BEFORE / span * 100) + '%"></div></div>';
+  }
+
+  function itemHtml(it, today) {
+    var notes = [];
+    if (it.predecessors.length) {
+      notes.push('前提：' + it.predecessors.map(function (p) {
+        return esc(p.task_name) + (p.status === 'COMPLETED' ? '（完了）' : p.is_overdue ? '<b style="color:var(--critical)">（期限超過）</b>' : '（' + esc(App.statusLabel(p.status)) + '）');
+      }).join('、'));
+    }
+    if (it.impacted_successors.length) {
+      notes.push('<span style="color:var(--critical)">後続への影響 ' + it.impacted_successors.length + '件：' +
+        it.impacted_successors.map(function (s) { return esc(s.task_name); }).join('、') + '</span>');
+    }
+    return '<li style="flex-wrap:wrap"><div class="grow"><a href="#/tasks?id=' + encodeURIComponent(it.task_id) + '" class="title" style="color:inherit;text-decoration:none">' + esc(it.task_name) + '</a>' +
+      '<div class="meta">' + esc(it.project_name) + ' ・ ' + esc(it.agent_name || '担当未設定') + ' ・ ' +
+        (it.start_date ? App.fmtDate(it.start_date) : '—') + ' 〜 ' + (it.deadline ? App.fmtDate(it.deadline, true) : '—') + '</div>' +
+      (notes.length ? '<div class="meta" style="margin-top:2px">' + notes.join('<br>') + '</div>' : '') + '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">' + App.statusChip(it.status) +
+        (it.delayed_by_predecessor ? '<span class="chip warn">前提が遅延</span>' : '') +
+        (it.due_soon ? '<span class="chip warn">' + App.icon('clock') + ' 間近</span>' : '') + '</div>' + gantt(it, today) + '</li>';
+  }
+
+  App.registerView('schedule', {
+    title: 'スケジュール',
+    render: function (el, params) {
+      var filter = { project_id: params.project_id || '', agent_id: params.agent_id || '', include_completed: params.done === '1' };
+      return Promise.all([App.call('schedule.timeline', { filter: filter }), App.loadRefs()]).then(function (r) {
+        var data = r[0], refs = r[1];
+        var today = dayNum(data.today);
+        var buckets = {};
+        data.items.forEach(function (it) { (buckets[groupOf(it, today)] = buckets[groupOf(it, today)] || []).push(it); });
+        var filters = '<form class="card" id="sch-filter" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:end;padding:12px 14px">' +
+          App.field({ idPrefix: 'q_', name: 'project_id', label: 'プロジェクト', type: 'select', value: filter.project_id,
+            options: [{ value: '', label: 'すべて' }].concat(refs.projects.map(function (p) { return { value: p.project_id, label: p.project_name }; })) }) +
+          App.field({ idPrefix: 'q_', name: 'agent_id', label: '担当AI', type: 'select', value: filter.agent_id,
+            options: [{ value: '', label: 'すべて' }].concat(refs.agents.map(function (a) { return { value: a.agent_id, label: a.agent_name }; })) }) +
+          '<label style="display:flex;gap:6px;align-items:center;min-height:38px;font-size:13px"><input type="checkbox" name="done"' + (filter.include_completed ? ' checked' : '') + '> 完了も表示</label></form>';
+        var body = GROUPS.filter(function (g) { return buckets[g.key]; }).map(function (g) {
+          return '<div class="date-group ' + (g.cls || '') + '">' + (g.cls ? App.icon('alert').replace('<svg', '<svg width="14" height="14"') : '') + esc(g.label) + ' <span class="muted num">' + buckets[g.key].length + '件</span></div>' +
+            '<div class="card" style="padding:4px 16px"><ul class="list">' + buckets[g.key].map(function (it) { return itemHtml(it, today); }).join('') + '</ul></div>';
+        }).join('');
+        el.innerHTML = filters +
+          '<div class="muted pc-only" style="font-size:12px;margin-top:10px">バーは今日の' + WINDOW_BEFORE + '日前〜' + WINDOW_AFTER + '日後の範囲で開始予定〜期限を表示（縦線が今日）。Googleカレンダー連携は Phase 2 で追加予定です。</div>' +
+          (body || '<div class="card placeholder section">表示するタスクはありません</div>');
+        document.getElementById('sch-filter').addEventListener('change', function (e) {
+          var d = App.formData(e.currentTarget), q = [];
+          if (d.project_id) q.push('project_id=' + encodeURIComponent(d.project_id));
+          if (d.agent_id) q.push('agent_id=' + encodeURIComponent(d.agent_id));
+          if (d.done) q.push('done=1');
+          location.hash = '#/schedule' + (q.length ? '?' + q.join('&') : '');
+        });
+      });
+    }
+  });
+})();
+</script>

@@ -1,0 +1,217 @@
+<script>
+/** C. タスク管理（一覧・詳細・登録・編集・状態変更・依存・成果物登録） */
+(function () {
+  var esc = App.esc;
+  var STATUS_GROUPS = [
+    { value: '', label: 'すべて（完了・キャンセル以外）' },
+    { value: 'BACKLOG,READY', label: '未着手' },
+    { value: 'ASSIGNED,IN_PROGRESS,REVIEW,APPROVAL', label: '進行中' },
+    { value: 'WAITING,BLOCKED,FAILED', label: '保留' },
+    { value: 'COMPLETED', label: '完了' },
+    { value: 'CANCELLED', label: 'キャンセル' }
+  ];
+
+  function taskForm(t, refs, allTasks) {
+    t = t || {};
+    var en = App.state.boot.enums;
+    var depOptions = allTasks.filter(function (x) { return x.task_id !== t.task_id && x.status !== 'CANCELLED'; })
+      .map(function (x) { return { value: x.task_id, label: x.task_name + '（' + (refs.projectName(x.project_id) || '-') + '）' }; });
+    return App.field({ name: 'project_id', label: 'プロジェクト', type: 'select', value: t.project_id, required: true,
+        options: [{ value: '', label: '選択してください' }].concat(refs.projects.map(function (p) { return { value: p.project_id, label: p.project_name }; })) }) +
+      App.field({ name: 'task_name', label: 'タスク名', value: t.task_name, required: true }) +
+      App.field({ name: 'description', label: '説明', type: 'textarea', value: t.description, rows: 3,
+        hint: '割り振りルールはタスク名・説明・カテゴリのキーワードで担当AIを判定します' }) +
+      '<div class="row2">' +
+        App.field({ name: 'assigned_agent_id', label: '担当AI', type: 'select', value: t.assigned_agent_id,
+          options: [{ value: '', label: '未設定（自動割り振りに任せる）' }].concat(refs.agents.filter(function (a) { return a.enabled === 'TRUE' || a.agent_id === t.assigned_agent_id; })
+            .map(function (a) { return { value: a.agent_id, label: a.agent_name + (a.usable ? '' : '（現在利用不可）') }; })) }) +
+        App.field({ name: 'priority', label: '優先度', type: 'select', value: t.priority || 'MEDIUM',
+          options: en.priority.map(function (v) { return { value: v, label: App.PRIORITY_LABEL[v] }; }) }) +
+      '</div><div class="row2">' +
+        App.field({ name: 'start_date', label: '開始予定', type: 'date', value: t.start_date }) +
+        App.field({ name: 'deadline', label: '期限', type: 'date', value: t.deadline }) +
+      '</div><div class="row2">' +
+        App.field({ name: 'estimated_hours', label: '見積時間（h）', type: 'number', value: t.estimated_hours }) +
+        App.field({ name: 'actual_hours', label: '実績時間（h）', type: 'number', value: t.actual_hours }) +
+      '</div>' +
+      App.field({ name: 'dependency_task_ids', label: '依存タスク（先に完了が必要なタスク）', type: 'select', multiple: true,
+        value: t.dependency_task_ids, options: depOptions, hint: 'Ctrl/⌘ キーで複数選択。スマホは一覧から複数選べます' }) +
+      App.field({ name: 'instruction', label: 'AIへの指示書', type: 'textarea', value: t.instruction, rows: 5,
+        hint: '作業待ちキューからコピーして各AIに渡す内容' }) +
+      App.field({ name: 'reference_urls', label: '資料URL（カンマ区切り・https のみ）', value: t.reference_urls, placeholder: 'https://drive.google.com/...' }) +
+      '<div class="row2">' +
+        App.field({ name: 'category', label: 'カテゴリ', value: t.category, placeholder: '空欄なら自動分類' }) +
+        App.field({ name: 'required_capability', label: '必要な能力', value: t.required_capability, placeholder: '例：design' }) +
+      '</div>';
+  }
+
+  function openTaskForm(t, defaults) {
+    Promise.all([App.loadRefs(), App.call('tasks.list', { filter: {} })]).then(function (r) {
+      var init = t || defaults || {};
+      App.modal({ title: t ? 'タスクを編集' : 'タスクを登録', body: taskForm(init, r[0], r[1]), submitLabel: t ? '保存' : '登録',
+        onSubmit: function (data) {
+          if (t) {
+            return App.call('tasks.update', { task_id: t.task_id, data: data, row_version: t.row_version })
+              .then(function () { App.toast('保存しました'); App.render(); });
+          }
+          return App.call('tasks.create', { data: data }).then(function (saved) {
+            App.toast('登録しました'); App.go('#/tasks?id=' + encodeURIComponent(saved.task_id));
+          });
+        } });
+    }).catch(App.showError);
+  }
+
+  function changeStatus(t, to) {
+    var needReason = App.state.boot.enums.reason_required.indexOf(to) >= 0;
+    App.confirmDialog('状態の変更', '「' + App.statusLabel(t.status) + '」→「' + App.statusLabel(to) + '」に変更します。',
+      { reason: true, reasonRequired: needReason, reasonLabel: needReason ? '理由（必須）' : 'メモ（任意）', submitLabel: '変更', danger: to === 'CANCELLED',
+        action: function (d) { return App.call('tasks.changeStatus', { task_id: t.task_id, status: to, reason: d.reason, row_version: t.row_version }); } })
+      .then(function () { App.toast('状態を変更しました'); App.render(); });
+  }
+
+  function openDeliverableForm(t) {
+    App.modal({ title: '成果物を登録', submitLabel: '登録',
+      body: App.field({ name: 'file_name', label: 'ファイル名', required: true, hint: '同じファイル名で登録すると版（バージョン）が自動で上がります' }) +
+        App.field({ name: 'file_url', label: 'Google Drive のリンク', required: true, placeholder: 'https://drive.google.com/...' }) +
+        App.field({ name: 'submitted_by', label: '提出者', value: t.assigned_agent_id, hint: '空欄なら担当AI' }) +
+        (t.status === 'IN_PROGRESS' ? '<div class="hint">登録すると、タスクは「成果物確認中」に進みます。</div>' : ''),
+      onSubmit: function (data) {
+        data.task_id = t.task_id;
+        return App.call('deliverables.register', { data: data }).then(function () { App.toast('成果物を登録しました'); App.render(); });
+      } });
+  }
+
+  function removeTask(t) {
+    App.confirmDialog('タスクの削除', '「' + t.task_name + '」を削除します。データは履歴として保持され、依存関係は解除されます。',
+      { submitLabel: '削除', danger: true, action: function () { return App.call('tasks.remove', { task_id: t.task_id }); } })
+      .then(function () { App.toast('削除しました'); App.go('#/tasks'); });
+  }
+
+  // ---- 一覧 ----
+  function renderList(el, params) {
+    return App.loadRefs().then(function (refs) {
+      var filter = { project_id: params.project_id || '', agent_id: params.agent_id || '', overdue: params.overdue === '1' };
+      var statusValue = params.status || '';
+      filter.status = statusValue || 'BACKLOG,READY,ASSIGNED,IN_PROGRESS,WAITING,BLOCKED,REVIEW,APPROVAL,FAILED';
+      return App.call('tasks.list', { filter: filter }).then(function (list) {
+        if (App.canEdit()) App.setActions('<button class="btn primary" id="btn-new-task">' + App.icon('plus') + '<span>新規</span></button>');
+        var statusOpts = STATUS_GROUPS.slice();
+        if (statusValue && !statusOpts.some(function (o) { return o.value === statusValue; })) statusOpts.push({ value: statusValue, label: statusValue.split(',').map(App.statusLabel).join('・') });
+        var filters = '<form class="card" id="task-filter" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:end;padding:12px 14px">' +
+          App.field({ idPrefix: 'q_', name: 'project_id', label: 'プロジェクト', type: 'select', value: filter.project_id,
+            options: [{ value: '', label: 'すべて' }].concat(refs.projects.map(function (p) { return { value: p.project_id, label: p.project_name }; })) }) +
+          App.field({ idPrefix: 'q_', name: 'status', label: '状態', type: 'select', value: statusValue, options: statusOpts }) +
+          App.field({ idPrefix: 'q_', name: 'agent_id', label: '担当AI', type: 'select', value: filter.agent_id,
+            options: [{ value: '', label: 'すべて' }].concat(refs.agents.map(function (a) { return { value: a.agent_id, label: a.agent_name }; })) }) +
+          '<label style="display:flex;gap:6px;align-items:center;min-height:38px;font-size:13px"><input type="checkbox" name="overdue"' + (filter.overdue ? ' checked' : '') + '> 期限超過のみ</label>' +
+          '</form>';
+
+        var rows = list.map(function (t) {
+          var href = '#/tasks?id=' + encodeURIComponent(t.task_id);
+          return '<tr><td><a href="' + href + '" style="font-weight:600">' + esc(t.task_name) + '</a><div class="muted" style="font-size:12px">' + esc(refs.projectName(t.project_id)) + '</div></td>' +
+            '<td>' + App.statusChip(t.status) + '</td><td>' + App.priorityChip(t.priority) + '</td>' +
+            '<td>' + esc(refs.agentName(t.assigned_agent_id) || '—') + '</td>' +
+            '<td class="num" style="white-space:nowrap">' + (t.is_overdue ? '<span class="chip critical">' + App.icon('alert') + ' ' + App.fmtDate(t.deadline) + '</span>' : (App.fmtDate(t.deadline) || '—')) + '</td></tr>';
+        }).join('');
+        var cards = list.map(function (t) {
+          return '<li><a class="row" href="#/tasks?id=' + encodeURIComponent(t.task_id) + '"><div class="grow">' +
+            '<div class="title">' + esc(t.task_name) + '</div>' +
+            '<div class="meta">' + esc(refs.projectName(t.project_id)) + ' ・ ' + esc(refs.agentName(t.assigned_agent_id) || '担当未設定') + (t.deadline ? ' ・ 期限 ' + App.fmtDate(t.deadline) : '') + '</div>' +
+            '<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap">' + App.statusChip(t.status) + App.priorityChip(t.priority) +
+            (t.is_overdue ? '<span class="chip critical">' + App.icon('alert') + ' 期限超過</span>' : '') + '</div></div></a></li>';
+        }).join('');
+        el.innerHTML = filters + '<div class="card section">' +
+          (list.length ? '<div class="pc-only table-wrap"><table class="data"><thead><tr><th>タスク</th><th>状態</th><th>優先度</th><th>担当AI</th><th>期限</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+            '<ul class="list sp-only">' + cards + '</ul>' : '<div class="empty-state">該当するタスクはありません</div>') +
+          '<div class="muted" style="font-size:12px;margin-top:8px">' + list.length + '件</div></div>';
+
+        document.getElementById('task-filter').addEventListener('change', function (e) {
+          var d = App.formData(e.currentTarget);
+          var q = [];
+          ['project_id', 'status', 'agent_id'].forEach(function (k) { if (d[k]) q.push(k + '=' + encodeURIComponent(d[k])); });
+          if (d.overdue) q.push('overdue=1');
+          location.hash = '#/tasks' + (q.length ? '?' + q.join('&') : '');
+        });
+        var btn = document.getElementById('btn-new-task');
+        if (btn) btn.addEventListener('click', function () { openTaskForm(null, { project_id: filter.project_id }); });
+      });
+    });
+  }
+
+  // ---- 詳細 ----
+  function renderDetail(el, id) {
+    return Promise.all([App.call('tasks.get', { task_id: id }), App.loadRefs()]).then(function (r) {
+      var t = r[0], refs = r[1];
+      App.setTitle(t.task_name);
+      if (App.canEdit()) App.setActions('<button class="btn" id="btn-edit">編集</button>');
+      var info = [
+        ['プロジェクト', '<a href="#/projects?id=' + encodeURIComponent(t.project_id) + '">' + esc(refs.projectName(t.project_id) || t.project_id) + '</a>'],
+        ['状態', App.statusChip(t.status) + (t.waiting_reason ? '<div class="muted" style="font-size:12px;margin-top:4px">理由：' + esc(t.waiting_reason) + '</div>' : '')],
+        ['担当AI', esc(refs.agentName(t.assigned_agent_id) || '未設定')],
+        ['優先度', App.priorityChip(t.priority)],
+        ['開始予定', App.fmtDate(t.start_date) || '—'],
+        ['期限', t.is_overdue ? '<span class="chip critical">' + App.icon('alert') + ' ' + App.fmtDate(t.deadline) + '（期限超過）</span>' : (App.fmtDate(t.deadline) || '—')],
+        ['見積／実績', esc((t.estimated_hours || '—') + ' h ／ ' + (t.actual_hours || '—') + ' h')],
+        ['カテゴリ', esc((t.category || '—') + (t.required_capability ? '（能力：' + t.required_capability + '）' : ''))],
+        ['再実行回数', esc(t.retry_count || '0')]
+      ].map(function (x) { return '<tr><th style="width:100px">' + x[0] + '</th><td>' + x[1] + '</td></tr>'; }).join('');
+
+      var statusButtons = App.canEdit() && t.next_statuses.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap">' + t.next_statuses.map(function (s) {
+        return '<button class="btn' + (s === 'CANCELLED' ? ' danger' : '') + '" data-status="' + s + '">' + esc(App.statusLabel(s)) + '</button>';
+      }).join('') + '</div>' : '<div class="empty-state">変更できる状態はありません</div>';
+
+      var depList = function (items, empty) {
+        return items.length ? '<ul class="list">' + items.map(function (d) {
+          return '<li><a class="row" href="#/tasks?id=' + encodeURIComponent(d.task_id) + '"><span class="grow">' + esc(d.task_name) + '</span>' + (d.status ? App.statusChip(d.status) : '') + '</a></li>';
+        }).join('') + '</ul>' : '<div class="empty-state">' + empty + '</div>';
+      };
+      var deliverables = t.deliverables.length ? '<ul class="list">' + t.deliverables.map(function (d) {
+        var cls = d.review_status === 'APPROVED' ? 'good' : d.review_status === 'REJECTED' ? 'critical' : 'warn';
+        var lbl = { PENDING: '確認待ち', APPROVED: '承認', REJECTED: '差し戻し' }[d.review_status] || d.review_status;
+        return '<li><div class="grow"><a href="' + esc(d.file_url) + '" target="_blank" rel="noopener noreferrer" class="title">' + esc(d.file_name) + '</a> <span class="chip">v' + esc(d.version) + '</span>' +
+          '<div class="meta">' + esc(d.submitted_by) + ' ・ ' + App.fmtDate(d.submitted_at, true) + (d.review_comment ? ' ・ ' + esc(d.review_comment) : '') + '</div></div>' +
+          '<span class="chip ' + cls + '">' + esc(lbl) + '</span></li>';
+      }).join('') + '</ul>' : '<div class="empty-state">成果物はまだありません</div>';
+      var logs = t.executions.length ? '<ul class="list">' + t.executions.slice(0, 10).map(function (e) {
+        return '<li><div class="grow"><div>' + esc(e.execution_type) + ' <span class="chip ' + (e.result === 'FAILED' ? 'critical' : '') + '">' + esc(e.result || '実行中') + '</span></div>' +
+          '<div class="meta">' + App.fmtDate(e.start_time, true) + ' ・ ' + esc(e.triggered_by) + (e.error_message ? ' ・ ' + esc(e.error_message) : '') + '</div></div></li>';
+      }).join('') + '</ul>' : '<div class="empty-state">実行履歴はありません</div>';
+      var refsHtml = t.reference_urls ? t.reference_urls.split(',').map(function (u) {
+        return '<div><a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer" style="overflow-wrap:anywhere">' + esc(u) + '</a></div>';
+      }).join('') : '<span class="muted">なし</span>';
+
+      el.innerHTML = '<p style="margin:0 0 12px"><a href="#/tasks">← タスク一覧</a></p>' +
+        '<div class="grid two">' +
+          '<div class="card"><h2>概要</h2><table class="data">' + info + '</table>' +
+            (t.description ? '<div style="margin-top:10px;white-space:pre-wrap">' + esc(t.description) + '</div>' : '') + '</div>' +
+          '<div><div class="card"><h2>状態を変更</h2>' + statusButtons + '</div>' +
+            '<div class="card section"><h2>依存関係</h2><div class="muted" style="font-size:12px">先に完了が必要</div>' + depList(t.predecessors, 'なし') +
+            '<div class="muted" style="font-size:12px;margin-top:8px">このタスクを待っている後続</div>' + depList(t.successors, 'なし') + '</div></div>' +
+        '</div>' +
+        '<div class="card section"><h2>AIへの指示書と資料</h2>' +
+          (t.instruction ? '<div style="white-space:pre-wrap;background:var(--surface-2);padding:10px 12px;border-radius:8px">' + esc(t.instruction) + '</div>' : '<div class="empty-state">指示書は未入力です</div>') +
+          '<div style="margin-top:10px">' + refsHtml + '</div></div>' +
+        '<div class="card section"><h2>成果物 <span class="sub">' + t.deliverables.length + '件</span>' +
+          (App.canEdit() && ['IN_PROGRESS', 'REVIEW', 'ASSIGNED'].indexOf(t.status) >= 0 ? '<button class="btn" id="btn-deliverable" style="margin-left:auto">' + App.icon('plus') + '<span>成果物を登録</span></button>' : '') +
+        '</h2>' + deliverables + '</div>' +
+        '<div class="card section"><h2>実行履歴</h2>' + logs + '</div>' +
+        (App.canEdit() && t.status !== 'COMPLETED' ? '<div class="actions section" style="justify-content:flex-start"><button class="btn danger" id="btn-remove">このタスクを削除</button></div>' : '');
+
+      el.querySelectorAll('[data-status]').forEach(function (b) { b.addEventListener('click', function () { changeStatus(t, b.getAttribute('data-status')); }); });
+      var be = document.getElementById('btn-edit'); if (be) be.addEventListener('click', function () { openTaskForm(t); });
+      var bd = document.getElementById('btn-deliverable'); if (bd) bd.addEventListener('click', function () { openDeliverableForm(t); });
+      var br = document.getElementById('btn-remove'); if (br) br.addEventListener('click', function () { removeTask(t); });
+    });
+  }
+
+  App.registerView('tasks', {
+    title: 'タスク',
+    render: function (el, params) {
+      if (params.id) return renderDetail(el, params.id);
+      var p = renderList(el, params);
+      if (params['new'] === '1') p.then(function () { openTaskForm(null, { project_id: params.project_id }); });
+      return p;
+    }
+  });
+})();
+</script>

@@ -27,6 +27,19 @@ var Api = (function () {
     'tasks.update': { role: 'EDITOR', fn: function (x) { return TaskService.update(p(x, 'task_id'), p(x, 'data'), p(x, 'row_version')); } },
     'tasks.changeStatus': { role: 'EDITOR', fn: function (x) { return TaskService.changeStatus(p(x, 'task_id'), p(x, 'status'), p(x, 'reason'), p(x, 'row_version')); } },
     'tasks.remove': { role: 'EDITOR', fn: function (x) { return TaskService.remove(p(x, 'task_id')); } },
+    'tasks.retry': { role: 'EDITOR', fn: function (x) { return TaskService.retry(p(x, 'task_id'), p(x, 'reason'), !!p(x, 'force')); } },
+    'tasks.restore': { role: 'OWNER', fn: function (x) { return TaskService.restore(p(x, 'task_id')); } },
+    'projects.restore': { role: 'OWNER', fn: function (x) { return ProjectService.restore(p(x, 'project_id')); } },
+    'trash.list': { role: 'OWNER', fn: function () { return ProjectService.trash(); } },
+
+    'rules.list': { role: 'VIEWER', fn: function () { return RuleService.list(); } },
+    'rules.create': { role: 'OWNER', fn: function (x) { return RuleService.create(p(x, 'data')); } },
+    'rules.update': { role: 'OWNER', fn: function (x) { return RuleService.update(p(x, 'rule_id'), p(x, 'data')); } },
+    'rules.test': { role: 'VIEWER', fn: function (x) { return RuleService.test(p(x, 'data')); } },
+
+    'logs.executions': { role: 'VIEWER', fn: function (x) { return SystemService.executions(p(x, 'filter')); } },
+    'logs.audits': { role: 'VIEWER', fn: function (x) { return SystemService.audits(p(x, 'filter')); } },
+    'system.health': { role: 'OWNER', fn: function () { return SystemService.health(); } },
 
     'queue.byAgent': { role: 'VIEWER', fn: function () { return WorkQueueService.byAgent(); } },
     'queue.runNow': { role: 'EDITOR', fn: function () { return WorkQueueService.runNow(); } },

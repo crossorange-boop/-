@@ -1,0 +1,283 @@
+<script>
+/** 設定・ログ（自動処理・実行履歴・変更履歴・割り振りルール・設定値・削除済み・システム情報） */
+(function () {
+  var esc = App.esc;
+  var TABS = [
+    { key: 'automation', label: '自動処理' }, { key: 'executions', label: '実行履歴' }, { key: 'audits', label: '変更履歴' },
+    { key: 'rules', label: '割り振りルール' }, { key: 'settings', label: '設定値', owner: true },
+    { key: 'trash', label: '削除済み', owner: true }, { key: 'system', label: 'システム情報', owner: true }
+  ];
+  var EXEC_TYPE_LABEL = {
+    QUEUE_CHECK: '自動振り分け', DEADLINE_CHECK: '期限確認', AUTO_ASSIGN: '自動割当', AUTO_WAIT: '利用待ちへ', AUTO_RECOVER: '自動再開',
+    AUTO_CLASSIFY: '自動分類', AUTO_BLOCK: '前提待ちへ', AUTO_UNBLOCK: '前提待ち解除', AUTO_RETRY: '自動再投入', MANUAL_RETRY: '手動再実行',
+    REPORT_MORNING: '朝レポート', REPORT_MIDDAY: '昼レポート', REPORT_EVENING: '夕レポート', BACKUP: 'バックアップ', EXTERNAL_EXECUTION: '外部実行'
+  };
+  var ACTION_LABEL = { CREATE: '登録', UPDATE: '更新', DELETE: '削除', RESTORE: '復元', STATUS_CHANGE: '状態変更', APPROVE: '承認', REJECT: '差し戻し', SETUP: 'セットアップ' };
+  var FIELD_LABEL = { task_name: 'タスク名', description: '説明', category: 'カテゴリ', instruction: '指示書' };
+  var ENTITY_LABEL = { Projects: 'プロジェクト', Tasks: 'タスク', Agents: 'AI', Deliverables: '成果物', Approvals: '承認', Settings: '設定', AssignmentRules: '割り振りルール', System: 'システム' };
+
+  function resultChip(r) {
+    var cls = r === 'SUCCESS' ? 'good' : r === 'FAILED' ? 'critical' : (r === 'PARTIAL' || r === 'SKIPPED') ? 'warn' : '';
+    var lbl = { SUCCESS: '成功', FAILED: '失敗', PARTIAL: '一部', SKIPPED: '保留' }[r] || r || '実行中';
+    return '<span class="chip ' + cls + '">' + esc(lbl) + '</span>';
+  }
+  function filterForm(id, fields) {
+    return '<form class="card" id="' + id + '" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end;padding:12px 14px;margin-bottom:12px">' +
+      fields.map(function (f) { f.idPrefix = 'q_'; return App.field(f); }).join('') + '</form>';
+  }
+  function bindFilter(id, tab, keys) {
+    var f = document.getElementById(id);
+    if (!f) return;
+    f.addEventListener('change', function () {
+      var d = App.formData(f), q = ['tab=' + tab];
+      keys.forEach(function (k) { if (d[k]) q.push(k + '=' + encodeURIComponent(d[k])); });
+      location.hash = '#/settings?' + q.join('&');
+    });
+  }
+  function opts(map, allLabel) {
+    return [{ value: '', label: allLabel || 'すべて' }].concat(Object.keys(map).map(function (k) { return { value: k, label: map[k] }; }));
+  }
+
+  // ---- 自動処理 ----
+  function automation(el) {
+    var owner = App.isOwner();
+    var p = owner ? App.call('triggers.status') : Promise.resolve(null);
+    return p.then(function (st) {
+      var rows = st ? st.items.map(function (i) {
+        return '<tr><td><b>' + esc(i.label) + '</b><div class="muted" style="font-size:12px">' + esc(i.handler) + '</div></td><td>' + esc(i.schedule) + '</td>' +
+          '<td>' + (i.installed ? '<span class="chip good">登録済み</span>' : '<span class="chip warn">未登録</span>') + (i.duplicated ? ' <span class="chip critical">重複</span>' : '') + '</td>' +
+          '<td>' + (i.last_run ? App.fmtDate(i.last_run.time, true) + ' ' + resultChip(i.last_run.result) + '<div class="muted" style="font-size:12px">' + esc(i.last_run.message || '') + '</div>' : '<span class="muted">未実行</span>') + '</td></tr>';
+      }).join('') : '';
+      var triggerCard = st ? '<div class="card"><h2>定期処理（時間主導型トリガー）' +
+          '<span class="sub">1日 約' + st.runs_per_day + '回・推定 ' + st.estimated_minutes_per_day + '分／日（Workspace 上限 360分）</span></h2>' +
+          (st.all_installed ? '' : '<div class="error-box" style="margin-bottom:10px">定期処理が登録されていません。「登録・再設定」を押すと、PCを閉じていても自動処理が動くようになります。</div>') +
+          '<div class="table-wrap"><table class="data"><thead><tr><th>処理</th><th>実行タイミング</th><th>状態</th><th>前回の実行</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+          '<div class="actions" style="margin-top:12px;justify-content:flex-start"><button class="btn primary" id="btn-trg-install">登録・再設定</button>' +
+          '<button class="btn danger" id="btn-trg-stop">すべて停止</button></div>' +
+          '<div class="hint muted" style="font-size:12px;margin-top:6px">実行間隔・時刻は「設定値」タブで変更できます（変更すると自動で再設定されます）。日次の処理は指定時刻から最大15分程度ずれることがあります。</div></div>'
+        : '<div class="card muted">定期処理の登録・停止はオーナーのみ操作できます。</div>';
+      var manual = '<div class="card section"><h2>手動で実行</h2><div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        (App.canEdit() ? '<button class="btn" data-run="queue">自動振り分け</button><button class="btn" data-run="deadline">期限確認</button>' : '') +
+        (owner ? '<button class="btn" data-run="report-morning">朝レポート作成</button><button class="btn" data-run="report-midday">昼レポート作成</button>' +
+          '<button class="btn" data-run="report-evening">夕レポート作成</button><button class="btn" data-run="backup">今すぐバックアップ</button>' : '') +
+        '</div><div id="run-result" class="muted" style="font-size:12.5px;margin-top:10px"></div></div>';
+      el.innerHTML += triggerCard + manual;
+
+      var bi = document.getElementById('btn-trg-install');
+      if (bi) bi.addEventListener('click', function () {
+        App.confirmDialog('定期処理の登録', '設定どおりに6種類の定期処理を登録します（既存の登録は作り直します）。', { submitLabel: '登録する',
+          action: function () { return App.call('triggers.install'); } }).then(function (r) { App.toast(r.created.length + '件の定期処理を登録しました'); App.render(); });
+      });
+      var bs = document.getElementById('btn-trg-stop');
+      if (bs) bs.addEventListener('click', function () {
+        App.confirmDialog('定期処理の停止', 'すべての定期処理を停止します。自動振り分け・期限確認・レポート・バックアップが止まります。', { submitLabel: '停止する', danger: true,
+          action: function () { return App.call('triggers.uninstall'); } }).then(function (r) { App.toast(r.removed + '件の定期処理を停止しました'); App.render(); });
+      });
+      var RUNS = {
+        queue: ['queue.runNow', {}, function (r) { return r.skipped ? r.reason : '振り分け：割当 ' + r.assigned + '・分類 ' + r.classified + '・待機 ' + r.waiting + '・復旧 ' + r.recovered + (r.retried ? '・再投入 ' + r.retried : ''); }],
+        deadline: ['deadline.runNow', {}, function (r) { return r.skipped ? r.reason : '期限確認：期限超過 ' + r.overdue + '・期限間近 ' + r.due_soon + '・再調整案 ' + r.proposals + '・新規通知 ' + r.notified; }],
+        'report-morning': ['reports.generate', { kind: 'morning' }, function (r) { return '朝レポートを作成しました：' + r.headline; }],
+        'report-midday': ['reports.generate', { kind: 'midday' }, function (r) { return '昼レポートを作成しました：' + r.headline; }],
+        'report-evening': ['reports.generate', { kind: 'evening' }, function (r) { return '夕レポートを作成しました：' + r.headline; }],
+        backup: ['backup.runNow', {}, function (r) { return 'バックアップを作成しました：' + r.name + '（保持 ' + r.kept + '世代）'; }]
+      };
+      el.querySelectorAll('[data-run]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var def = RUNS[b.getAttribute('data-run')];
+          b.disabled = true;
+          App.call(def[0], def[1]).then(function (r) {
+            var msg = def[2](r);
+            document.getElementById('run-result').textContent = msg;
+            App.toast(msg); b.disabled = false;
+          }).catch(function (e) { b.disabled = false; App.showError(e); });
+        });
+      });
+    });
+  }
+
+  // ---- 実行履歴 ----
+  function executions(el, params) {
+    var filter = { result: params.result || '', execution_type: params.execution_type || '', date: params.date || '', limit: 200 };
+    return App.call('logs.executions', { filter: filter }).then(function (r) {
+      el.innerHTML += filterForm('exec-filter', [
+        { name: 'result', label: '結果', type: 'select', value: filter.result, options: opts({ SUCCESS: '成功', FAILED: '失敗', PARTIAL: '一部', SKIPPED: '保留' }) },
+        { name: 'execution_type', label: '種別', type: 'select', value: filter.execution_type, options: opts(EXEC_TYPE_LABEL) },
+        { name: 'date', label: '日付', type: 'date', value: filter.date }
+      ]) + '<div class="card">' + (r.items.length ? '<div class="table-wrap"><table class="data"><thead><tr><th>開始</th><th>種別</th><th>結果</th><th>対象</th><th>内容</th><th>実行者</th></tr></thead><tbody>' +
+        r.items.map(function (e) {
+          return '<tr><td class="num" style="white-space:nowrap">' + App.fmtDate(e.start_time, true) + '</td><td>' + esc(EXEC_TYPE_LABEL[e.execution_type] || e.execution_type) + '</td>' +
+            '<td>' + resultChip(e.result) + '</td><td>' + (e.task_id ? '<a href="#/tasks?id=' + encodeURIComponent(e.task_id) + '">' + esc(e.task_name || e.task_id) + '</a>' : esc(e.agent_id || '—')) + '</td>' +
+            '<td>' + esc(e.error_message || '') + '</td><td>' + esc(e.triggered_by === 'SYSTEM' ? '自動' : String(e.triggered_by || '').split('@')[0]) + '</td></tr>';
+        }).join('') + '</tbody></table></div>' : '<div class="empty-state">該当する実行履歴はありません</div>') +
+        '<div class="muted" style="font-size:12px;margin-top:8px">' + r.total + '件中 ' + r.items.length + '件を表示（新しい順）</div></div>';
+      bindFilter('exec-filter', 'executions', ['result', 'execution_type', 'date']);
+    });
+  }
+
+  // ---- 変更履歴 ----
+  function audits(el, params) {
+    var filter = { entity_type: params.entity_type || '', action: params.action || '', date: params.date || '', limit: 200 };
+    return App.call('logs.audits', { filter: filter }).then(function (r) {
+      el.innerHTML += filterForm('audit-filter', [
+        { name: 'entity_type', label: '対象', type: 'select', value: filter.entity_type, options: opts(ENTITY_LABEL) },
+        { name: 'action', label: '操作', type: 'select', value: filter.action, options: opts(ACTION_LABEL) },
+        { name: 'date', label: '日付', type: 'date', value: filter.date }
+      ]) + '<div class="card">' + (r.items.length ? '<ul class="list">' + r.items.map(function (a, i) {
+        return '<li><div class="grow"><div class="title">' + esc(a.entity_name || a.entity_id) + '</div>' +
+          '<div class="meta">' + esc(ENTITY_LABEL[a.entity_type] || a.entity_type) + 'を' + esc(ACTION_LABEL[a.action] || a.action) + ' ・ ' + esc(a.user === 'SYSTEM' ? '自動処理' : a.user) + '</div></div>' +
+          '<span class="meta num" style="white-space:nowrap">' + App.fmtDate(a.timestamp, true) + '</span><button class="btn" data-audit="' + i + '">詳細</button></li>';
+      }).join('') + '</ul>' : '<div class="empty-state">該当する変更履歴はありません</div>') +
+        '<div class="muted" style="font-size:12px;margin-top:8px">' + r.total + '件中 ' + r.items.length + '件を表示（新しい順）。変更履歴は追記のみで、編集・削除はできません。</div></div>';
+      bindFilter('audit-filter', 'audits', ['entity_type', 'action', 'date']);
+      el.querySelectorAll('[data-audit]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var a = r.items[Number(b.getAttribute('data-audit'))];
+          var pretty = function (j) { try { return JSON.stringify(JSON.parse(j), null, 2); } catch (e) { return j || '（なし）'; } };
+          App.modal({ title: '変更履歴の詳細', body:
+            '<div class="muted" style="font-size:12px">' + esc(a.timestamp) + ' ・ ' + esc(a.user) + ' ・ ' + esc(a.entity_type) + ' ' + esc(a.entity_id) + '</div>' +
+            '<div class="field"><label>変更前</label><pre class="report-text" style="max-height:220px">' + esc(pretty(a.before_json)) + '</pre></div>' +
+            '<div class="field"><label>変更後</label><pre class="report-text" style="max-height:220px">' + esc(pretty(a.after_json)) + '</pre></div>' });
+        });
+      });
+    });
+  }
+
+  // ---- 割り振りルール ----
+  function ruleForm(r, agents) {
+    r = r || {};
+    return '<div class="row2">' + App.field({ name: 'priority', label: '優先順位（小さいほど先に判定）', type: 'number', value: r.priority || 50, required: true }) +
+        App.field({ name: 'required_capability', label: '必要な能力', value: r.required_capability, required: true, placeholder: '例：design' }) + '</div>' +
+      App.field({ name: 'keyword_pattern', label: 'キーワード（「|」区切りで複数）', value: r.keyword_pattern, required: true, placeholder: '例：デザイン|バナー|チラシ' }) +
+      '<div class="row2">' + App.field({ name: 'category', label: 'カテゴリ', value: r.category, placeholder: '空欄なら能力と同じ' }) +
+        App.field({ name: 'preferred_agent_id', label: '推奨AI', type: 'select', value: r.preferred_agent_id,
+          options: [{ value: '', label: '指定なし（能力で選ぶ）' }].concat(agents.map(function (a) { return { value: a.agent_id, label: a.agent_name }; })) }) + '</div>' +
+      App.field({ name: 'match_field', label: '照合する項目', type: 'select', multiple: true, value: r.match_field || 'task_name,description,category',
+        options: [{ value: 'task_name', label: 'タスク名' }, { value: 'description', label: '説明' }, { value: 'category', label: 'カテゴリ' }, { value: 'instruction', label: '指示書' }] }) +
+      '<label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" name="enabled"' + (r.enabled === 'FALSE' ? '' : ' checked') + '> 有効</label>';
+  }
+  function rules(el) {
+    return Promise.all([App.call('rules.list'), App.call('agents.list')]).then(function (res) {
+      var list = res[0], agents = res[1];
+      var owner = App.isOwner();
+      el.innerHTML += '<div class="card"><h2>割り振りルール <span class="sub">上から順に判定し、最初に一致したルールで分類します</span>' +
+        (owner ? '<button class="btn primary" style="margin-left:auto" id="btn-rule-new">' + App.icon('plus') + '<span>追加</span></button>' : '') + '</h2>' +
+        '<div class="table-wrap"><table class="data"><thead><tr><th>順位</th><th>キーワード</th><th>能力 → 推奨AI</th><th>状態</th>' + (owner ? '<th></th>' : '') + '</tr></thead><tbody>' +
+        list.map(function (r) {
+          return '<tr style="' + (r.enabled === 'FALSE' ? 'opacity:.55' : '') + '"><td class="num">' + esc(r.priority) + '</td><td class="wrap-any">' + esc(r.keyword_pattern.split('|').join(' | ')) + '<div class="muted" style="font-size:11.5px">照合：' +
+            esc(String(r.match_field).split(',').map(function (f) { return FIELD_LABEL[f] || f; }).join('・')) + '</div></td>' +
+            '<td>' + esc(r.required_capability) + ' → ' + esc(r.preferred_agent_name || '（能力で選ぶ）') + '</td>' +
+            '<td>' + (r.enabled === 'FALSE' ? '<span class="chip">無効</span>' : '<span class="chip good">有効</span>') + '</td>' +
+            (owner ? '<td><button class="btn" data-rule="' + esc(r.rule_id) + '">編集</button></td>' : '') + '</tr>';
+        }).join('') + '</tbody></table></div></div>' +
+        '<div class="card section"><h2>試し判定 <span class="sub">タスク名を入れると、どのAIに割り振られるか確認できます</span></h2>' +
+        '<form id="rule-test" class="form"><div class="row2">' + App.field({ idPrefix: 't_', name: 'task_name', label: 'タスク名', placeholder: '例：年末セールのバナー作成' }) +
+        App.field({ idPrefix: 't_', name: 'description', label: '説明（任意）' }) + '</div>' +
+        '<div class="actions" style="justify-content:flex-start"><button class="btn" type="submit">判定する</button></div></form><div id="rule-test-result" style="margin-top:8px"></div></div>';
+
+      var open = function (r) {
+        App.modal({ title: r ? 'ルールを編集' : 'ルールを追加', body: ruleForm(r, agents),
+          onSubmit: function (data) {
+            var call = r ? App.call('rules.update', { rule_id: r.rule_id, data: data }) : App.call('rules.create', { data: data });
+            return call.then(function () { App.toast('保存しました'); App.render(); });
+          } });
+      };
+      var nb = document.getElementById('btn-rule-new'); if (nb) nb.addEventListener('click', function () { open(null); });
+      el.querySelectorAll('[data-rule]').forEach(function (b) {
+        b.addEventListener('click', function () { open(list.filter(function (x) { return x.rule_id === b.getAttribute('data-rule'); })[0]); });
+      });
+      document.getElementById('rule-test').addEventListener('submit', function (e) {
+        e.preventDefault();
+        App.call('rules.test', { data: App.formData(e.target) }).then(function (r) {
+          var c = r.classification, d = r.decision;
+          var DEC = { ASSIGN: '割り当て', WAIT: '利用待ち', HOLD: '上限のため保留', NO_CANDIDATE: '候補なし' };
+          document.getElementById('rule-test-result').innerHTML = !c.source
+            ? '<div class="error-box">どのルールにも一致しません。担当AIを手動で設定するか、ルールを追加してください。</div>'
+            : '<div class="report-text">一致したルール：' + esc(c.rule_id || '（手動指定）') + '\n必要な能力：' + esc(c.required_capability) +
+              '\n判定：' + esc(DEC[d.decision] || d.decision) + (r.agent_name ? ' → ' + esc(r.agent_name) : '') + '\n理由：' + esc(d.reason) + '</div>';
+        }).catch(App.showError);
+      });
+    });
+  }
+
+  // ---- 設定値 ----
+  function settings(el) {
+    return App.call('settings.list').then(function (list) {
+      el.innerHTML += '<div class="card"><div class="table-wrap"><table class="data"><thead><tr><th>項目</th><th>値</th><th>説明</th><th></th></tr></thead><tbody>' +
+        list.map(function (s) {
+          return '<tr><td style="white-space:nowrap"><code>' + esc(s.setting_key) + '</code></td><td class="num"><b>' + esc(s.setting_value || '（空）') + '</b></td>' +
+            '<td class="muted" style="font-size:12.5px">' + esc(s.description) + '</td>' +
+            '<td>' + (s.readonly ? '<span class="chip">変更不可</span>' : '<button class="btn" data-key="' + esc(s.setting_key) + '">変更</button>') + '</td></tr>';
+        }).join('') + '</tbody></table></div></div>';
+      el.querySelectorAll('[data-key]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var s = list.filter(function (x) { return x.setting_key === b.getAttribute('data-key'); })[0];
+          App.modal({ title: s.setting_key + ' を変更', body: '<p class="muted" style="margin:0">' + esc(s.description) + '</p>' +
+            App.field({ name: 'value', label: '値', value: s.setting_value, type: s.setting_key === 'ALLOWED_USERS' || s.setting_key === 'APPROVAL_REQUIRED_ACTIONS' ? 'textarea' : 'text', rows: 3 }),
+            onSubmit: function (d) {
+              return App.call('settings.update', { key: s.setting_key, value: d.value }).then(function (r) {
+                App.toast(r.triggers_reinstalled ? '保存し、定期処理を再設定しました' : '保存しました'); App.render();
+              });
+            } });
+        });
+      });
+    });
+  }
+
+  // ---- 削除済み ----
+  function trash(el) {
+    return App.call('trash.list').then(function (t) {
+      var row = function (kind, id, name, meta) {
+        return '<li><div class="grow"><div class="title">' + esc(name) + '</div><div class="meta">' + meta + '</div></div>' +
+          '<button class="btn" data-restore-' + kind + '="' + esc(id) + '">復元</button></li>';
+      };
+      el.innerHTML += '<div class="card"><h2>削除済みプロジェクト <span class="sub">' + t.projects.length + '件</span></h2>' +
+        (t.projects.length ? '<ul class="list">' + t.projects.map(function (p) { return row('project', p.project_id, p.project_name, '削除 ' + App.fmtDate(p.updated_at, true) + ' ・ 配下タスクも一緒に復元します'); }).join('') + '</ul>' : '<div class="empty-state">なし</div>') + '</div>' +
+        '<div class="card section"><h2>削除済みタスク <span class="sub">' + t.tasks.length + '件</span></h2>' +
+        (t.tasks.length ? '<ul class="list">' + t.tasks.map(function (x) { return row('task', x.task_id, x.task_name, esc(x.project_name) + ' ・ 削除 ' + App.fmtDate(x.updated_at, true)); }).join('') + '</ul>' : '<div class="empty-state">なし</div>') +
+        '<div class="muted" style="font-size:12px;margin-top:8px">削除したデータは行として保持されています。依存関係は復元されないため、必要なら再設定してください。</div></div>';
+      el.querySelectorAll('[data-restore-project]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          App.call('projects.restore', { project_id: b.getAttribute('data-restore-project') })
+            .then(function (r) { App.toast('復元しました（タスク ' + r.restored_tasks + '件）'); App.render(); }).catch(App.showError);
+        });
+      });
+      el.querySelectorAll('[data-restore-task]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          App.call('tasks.restore', { task_id: b.getAttribute('data-restore-task') })
+            .then(function () { App.toast('復元しました'); App.render(); }).catch(App.showError);
+        });
+      });
+    });
+  }
+
+  // ---- システム情報 ----
+  function system(el) {
+    return App.call('system.health').then(function (h) {
+      el.innerHTML += '<div class="grid two"><div class="card"><h2>データの保存場所</h2><table class="data">' +
+        '<tr><th>データベース</th><td>' + (h.spreadsheet_url ? '<a href="' + esc(h.spreadsheet_url) + '" target="_blank" rel="noopener noreferrer">スプレッドシートを開く</a>' : '—') + '</td></tr>' +
+        '<tr><th>バックアップ</th><td>' + (h.backup_folder_url ? '<a href="' + esc(h.backup_folder_url) + '" target="_blank" rel="noopener noreferrer">フォルダを開く</a>' : '—') +
+          '<div class="muted" style="font-size:12px">最終 ' + (h.last_backup ? App.fmtDate(h.last_backup, true) : '未実行') + '</div></td></tr>' +
+        '<tr><th>オーナー</th><td>' + esc(h.owner_email) + '</td></tr><tr><th>バージョン</th><td>' + esc(h.version) + '</td></tr>' +
+        '<tr><th>直近24時間のエラー</th><td>' + (h.errors_24h ? '<a href="#/settings?tab=executions&result=FAILED" class="chip critical" style="text-decoration:none">' + h.errors_24h + '件</a>' : '<span class="chip good">0件</span>') + '</td></tr>' +
+        '</table></div>' +
+        '<div class="card"><h2>データ量 <span class="sub">スプレッドシートのセル上限（1,000万）に対して ' + h.cell_usage_percent + '%</span></h2>' + App.progressBar(Math.min(100, Math.max(1, h.cell_usage_percent))) +
+        '<table class="data" style="margin-top:10px"><thead><tr><th>シート</th><th style="text-align:right">行数</th></tr></thead><tbody>' +
+        h.sheets.map(function (s) { return '<tr><td>' + esc(s.name) + '</td><td class="num" style="text-align:right">' + s.rows + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+    });
+  }
+
+  var RENDER = { automation: automation, executions: executions, audits: audits, rules: rules, settings: settings, trash: trash, system: system };
+
+  App.registerView('settings', {
+    title: '設定・ログ',
+    render: function (el, params) {
+      var tabs = TABS.filter(function (t) { return !t.owner || App.isOwner(); });
+      var tab = params.tab && tabs.some(function (t) { return t.key === params.tab; }) ? params.tab : 'automation';
+      el.innerHTML = '<nav class="tabs">' + tabs.map(function (t) {
+        return '<a href="#/settings?tab=' + t.key + '" class="' + (t.key === tab ? 'active' : '') + '">' + esc(t.label) + '</a>';
+      }).join('') + '</nav>';
+      return RENDER[tab](el, params);
+    }
+  });
+})();
+</script>

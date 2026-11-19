@@ -113,5 +113,41 @@ var ProjectService = (function () {
     return res.after;
   }
 
-  return { list: list, get: get, create: create, update: update, requestDelete: requestDelete, _deleteNow: deleteNow };
+  /** 論理削除したプロジェクトの復元（オーナーのみ）。同時に削除された配下タスクも復元する */
+  function restore(projectId) {
+    Auth.require('OWNER');
+    return Repository.get().withLock(function () {
+      var repo = Repository.get();
+      var p = repo.findById('Projects', projectId, { includeDeleted: true });
+      if (!p || !Util.toBool(p.is_deleted)) throw new Util.AppError('NOT_FOUND', '削除済みのプロジェクトが見つかりません');
+      var res = repo.update('Projects', projectId, { is_deleted: false });
+      AuditService.record('RESTORE', 'Projects', projectId, res.before, res.after);
+      // プロジェクト削除と同じ時刻（同じ処理）で削除されたタスクだけを戻す
+      var deletedAt = String(res.before.updated_at).slice(0, 16);
+      var restored = 0;
+      repo.findAll('Tasks', { includeDeleted: true }).forEach(function (t) {
+        if (t.project_id === projectId && Util.toBool(t.is_deleted) && String(t.updated_at).slice(0, 16) === deletedAt) {
+          var r = repo.update('Tasks', t.task_id, { is_deleted: false });
+          AuditService.record('RESTORE', 'Tasks', t.task_id, r.before, r.after);
+          restored++;
+        }
+      });
+      res.after.restored_tasks = restored;
+      return res.after;
+    });
+  }
+
+  /** 削除済み一覧（プロジェクト・タスク） */
+  function trash() {
+    var repo = Repository.get();
+    var names = {};
+    repo.findAll('Projects', { includeDeleted: true }).forEach(function (p) { names[p.project_id] = p.project_name; });
+    return {
+      projects: repo.findAll('Projects', { includeDeleted: true }).filter(function (p) { return Util.toBool(p.is_deleted); }),
+      tasks: repo.findAll('Tasks', { includeDeleted: true }).filter(function (t) { return Util.toBool(t.is_deleted); })
+        .map(function (t) { t.project_name = names[t.project_id] || ''; return t; })
+    };
+  }
+
+  return { list: list, get: get, create: create, update: update, requestDelete: requestDelete, restore: restore, trash: trash, _deleteNow: deleteNow };
 })();

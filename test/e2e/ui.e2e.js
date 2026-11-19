@@ -238,11 +238,90 @@ async function main() {
       assert.ok(await page.isVisible('#lane-AGT-CANVA .chip:has-text("外部AIの利用待ち")'));
     });
 
+    await step('設定・ログ：定期処理を登録すると6件が登録済みになる', async () => {
+      await page.goto(BASE + '/#/settings?tab=automation');
+      await page.waitForSelector('text=定期処理が登録されていません');
+      await page.click('#btn-trg-install');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.toast:has-text("6件の定期処理を登録しました")');
+      await page.waitForFunction(() => document.querySelectorAll('.chip.good').length >= 6);
+      assert.ok(await page.isVisible('td:has-text("毎日 13時台")'));
+      await shot('settings-automation-pc');
+    });
+
+    await step('設定・ログ：手動実行（昼レポート作成）と実行履歴の絞り込み', async () => {
+      await page.click('[data-run="report-midday"]');
+      await page.waitForSelector('#run-result:has-text("昼レポートを作成しました")');
+      await page.goto(BASE + '/#/settings?tab=executions');
+      await page.waitForSelector('#exec-filter');
+      await page.selectOption('#q_execution_type', 'AUTO_ASSIGN');
+      await page.waitForFunction(() => location.hash.includes('execution_type=AUTO_ASSIGN'));
+      await page.waitForSelector('table.data td:has-text("自動割当")');
+      await shot('settings-executions-pc');
+    });
+
+    await step('設定・ログ：設定値で昼の時刻を変えると定期処理が再設定される', async () => {
+      await page.goto(BASE + '/#/settings?tab=settings');
+      await page.click('[data-key="MIDDAY_CHECK_HOUR"]');
+      await page.fill('#f_value', '12');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.toast:has-text("定期処理を再設定しました")');
+      await page.goto(BASE + '/#/settings?tab=automation');
+      await page.waitForSelector('td:has-text("毎日 12時台")');
+      await page.goto(BASE + '/#/settings?tab=settings');
+      await page.click('[data-key="MIDDAY_CHECK_HOUR"]');
+      await page.fill('#f_value', '25');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.modal [data-error]:has-text("23 以下")');
+      await page.click('.modal [data-cancel]');
+    });
+
+    await step('設定・ログ：割り振りルールの試し判定と追加', async () => {
+      await page.goto(BASE + '/#/settings?tab=rules');
+      await page.waitForSelector('#rule-test');
+      await page.fill('#t_task_name', '年末セールのバナー作成');
+      await page.click('#rule-test button[type=submit]');
+      await page.waitForSelector('#rule-test-result:has-text("RUL-DESIGN")');
+      await page.click('#btn-rule-new');
+      await page.fill('#f_priority', '5');
+      await page.fill('#f_required_capability', 'design');
+      await page.fill('#f_keyword_pattern', 'ロゴ');
+      await page.selectOption('#f_preferred_agent_id', 'AGT-CANVA');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('td:has-text("ロゴ")');
+      await shot('settings-rules-pc');
+    });
+
+    await step('タスクの失敗 → 再実行', async () => {
+      await page.goto(BASE + '/#/tasks');
+      await page.waitForSelector('table.data');
+      await page.click('table.data a:has-text("サイト構成とGASフォーム実装")');
+      await page.waitForSelector('[data-status="FAILED"]');
+      await page.click('[data-status="FAILED"]');
+      await page.fill('.modal #f_reason', 'フォーム送信でエラー');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('#btn-retry');
+      assert.ok(await page.isVisible('text=再実行 0/3回'));
+      await page.click('#btn-retry');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.toast:has-text("再実行に回しました")');
+      await page.waitForSelector('.card .chip:has-text("実行可能")');
+      assert.ok(await page.isVisible('td:has-text("1")'));
+    });
+
+    await step('設定・ログ：削除済みからタスクを復元、システム情報', async () => {
+      await page.goto(BASE + '/#/settings?tab=trash');
+      await page.waitForSelector('text=削除済みタスク');
+      await page.goto(BASE + '/#/settings?tab=system');
+      await page.waitForSelector('text=スプレッドシートを開く');
+      assert.ok(await page.isVisible('text=AssignmentRules'));
+    });
+
     await step('スマホ幅で各画面が横にはみ出さない', async () => {
       const ctx = await browser.newContext({ ...devices['iPhone 13'] });
       const m = await ctx.newPage();
       m.on('pageerror', (e) => errors.push('mobile: ' + e.message));
-      for (const r of ['dashboard', 'projects', 'tasks', 'schedule', 'approvals', 'agents', 'agents?id=AGT-CANVA', 'queue']) {
+      for (const r of ['dashboard', 'projects', 'tasks', 'schedule', 'approvals', 'agents', 'agents?id=AGT-CANVA', 'queue', 'settings?tab=automation', 'settings?tab=executions', 'settings?tab=rules', 'settings?tab=settings']) {
         await m.goto(BASE + '/#/' + r);
         await m.waitForSelector('.content .card');
         await m.waitForTimeout(200);

@@ -96,6 +96,19 @@ var QueueEngine = (function () {
       return m;
     };
 
+    // ⓪ 自動再投入：自動処理で失敗したタスクを上限回数まで READY に戻す（人が失敗にしたものは対象外）
+    var maxRetry = SettingsService.getNumber('MAX_RETRY_COUNT', 3);
+    fresh().forEach(function (t) {
+      if (outOfTime() || t.status !== S.FAILED) return;
+      if (String(t.waiting_reason || '').indexOf(SYSTEM_WAIT_PREFIX) !== 0) return;
+      var count = Number(t.retry_count) || 0;
+      if (count >= maxRetry) return;
+      safely(t, function () {
+        move(t, S.READY, '自動再投入（' + (count + 1) + '/' + maxRetry + '回目）', { retry_count: count + 1 }, 'AUTO_RETRY');
+        summary.retried = (summary.retried || 0) + 1;
+      });
+    });
+
     // ① 前提タスクの確認
     var deps = repo.findAll('Dependencies');
     var map = taskMap();
@@ -189,12 +202,12 @@ var QueueEngine = (function () {
       });
     });
 
-    var changed = summary.blocked + summary.unblocked + summary.waiting + summary.recovered + summary.classified + summary.assigned;
+    var changed = (summary.retried || 0) + summary.blocked + summary.unblocked + summary.waiting + summary.recovered + summary.classified + summary.assigned;
     if (changed || summary.errors || summary.timed_out) {
       repo.insert('ExecutionLogs', {
         task_id: '', agent_id: 'AGT-RULE-ENGINE', execution_type: 'QUEUE_CHECK', start_time: startIso, end_time: Util.nowIso(),
         result: summary.errors ? 'PARTIAL' : summary.timed_out ? 'PARTIAL' : 'SUCCESS',
-        error_message: '割当' + summary.assigned + '・分類' + summary.classified + '・待機' + summary.waiting + '・復旧' + summary.recovered +
+        error_message: (summary.retried ? '再投入' + summary.retried + '・' : '') + '割当' + summary.assigned + '・分類' + summary.classified + '・待機' + summary.waiting + '・復旧' + summary.recovered +
           '・前提待ち' + summary.blocked + '・解除' + summary.unblocked + (summary.errors ? '・エラー' + summary.errors : '') + (summary.timed_out ? '・時間切れ（次回継続）' : ''),
         retry_count: 0, triggered_by: triggeredBy
       });
@@ -206,5 +219,28 @@ var QueueEngine = (function () {
     return summary;
   }
 
-  return { run: run, acquireTaskLock: acquireTaskLock, releaseTaskLock: releaseTaskLock, isLocked: isLocked, SYSTEM_WAIT_PREFIX: SYSTEM_WAIT_PREFIX };
+  /**
+   * 外部実行の失敗を記録する（Phase 2 のアダプターから呼ぶ）。
+   * タスクは FAILED（自動）になり、上限内なら次回の振り分けで自動再投入される。上限に達したら重大通知。
+   */
+  function reportFailure(taskId, message) {
+    return Auth.runAsSystem(function () {
+      return Repository.get().withLock(function () {
+        var repo = Repository.get();
+        var t = repo.findById('Tasks', taskId);
+        if (!t) throw new Util.AppError('NOT_FOUND', 'タスクが見つかりません');
+        var after = TaskService._transition(taskId, S.FAILED, { actor: 'SYSTEM', reason: SYSTEM_WAIT_PREFIX + (message || '外部処理の失敗') });
+        AuditService.logExecution({ task_id: taskId, agent_id: t.assigned_agent_id, execution_type: 'EXTERNAL_EXECUTION', result: 'FAILED',
+          error_message: message || '', retry_count: t.retry_count, triggered_by: 'SYSTEM' });
+        var max = SettingsService.getNumber('MAX_RETRY_COUNT', 3);
+        if ((Number(t.retry_count) || 0) >= max) {
+          NotificationService.create('FAILED', '「' + t.task_name + '」が再実行の上限（' + max + '回）に達しました。内容を確認してください：' + (message || ''),
+            { task_id: taskId, severity: 'CRITICAL' });
+        }
+        return after;
+      });
+    });
+  }
+
+  return { run: run, reportFailure: reportFailure, acquireTaskLock: acquireTaskLock, releaseTaskLock: releaseTaskLock, isLocked: isLocked, SYSTEM_WAIT_PREFIX: SYSTEM_WAIT_PREFIX };
 })();

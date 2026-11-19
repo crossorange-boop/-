@@ -86,6 +86,7 @@ var TaskService = (function () {
     t.executions = repo.findAll('ExecutionLogs').filter(function (e) { return e.task_id === taskId; }).slice(-50).reverse();
     t.approvals = repo.findAll('Approvals').filter(function (a) { return a.task_id === taskId; });
     t.next_statuses = StateMachine.nextStatuses(t.status, 'USER');
+    t.max_retry_count = SettingsService.getNumber('MAX_RETRY_COUNT', 3);
     return t;
   }
 
@@ -230,7 +231,45 @@ var TaskService = (function () {
     });
   }
 
+  /**
+   * 失敗したタスクの再実行（FAILED → READY、再実行回数を加算）。
+   * 上限（MAX_RETRY_COUNT）に達している場合はオーナーのみ force で実行できる。
+   */
+  function retry(taskId, reason, force) {
+    var user = Auth.require('EDITOR');
+    return Repository.get().withLock(function () {
+      var t = Repository.get().findById('Tasks', taskId);
+      if (!t) throw new Util.AppError('NOT_FOUND', 'タスクが見つかりません');
+      if (t.status !== S.FAILED) throw new Util.AppError('INVALID_STATE', '再実行できるのは「失敗」のタスクだけです');
+      var max = SettingsService.getNumber('MAX_RETRY_COUNT', 3);
+      var count = Number(t.retry_count) || 0;
+      if (count >= max && !(force && user.role === 'OWNER')) {
+        throw new Util.AppError('INVALID_STATE', '再実行の上限（' + max + '回）に達しています。内容を見直してからオーナーが「上限を超えて再実行」してください');
+      }
+      var after = transition(taskId, S.READY, { actor: 'USER', reason: '再実行（' + (count + 1) + '回目）' + (reason ? '：' + reason : ''),
+        extraPatch: { retry_count: count + 1 } });
+      AuditService.logExecution({ task_id: taskId, agent_id: t.assigned_agent_id, execution_type: 'MANUAL_RETRY', result: 'SUCCESS',
+        error_message: reason || '', retry_count: count + 1 });
+      return after;
+    });
+  }
+
+  /** 論理削除したタスクの復元（オーナーのみ）。依存関係は復元しない */
+  function restore(taskId) {
+    Auth.require('OWNER');
+    return Repository.get().withLock(function () {
+      var repo = Repository.get();
+      var t = repo.findById('Tasks', taskId, { includeDeleted: true });
+      if (!t || !Util.toBool(t.is_deleted)) throw new Util.AppError('NOT_FOUND', '削除済みのタスクが見つかりません');
+      if (!repo.findById('Projects', t.project_id)) throw new Util.AppError('INVALID_STATE', '所属プロジェクトが削除されています。先にプロジェクトを復元してください');
+      var res = repo.update('Tasks', taskId, { is_deleted: false });
+      AuditService.record('RESTORE', 'Tasks', taskId, res.before, res.after);
+      return res.after;
+    });
+  }
+
   return {
+    retry: retry, restore: restore,
     list: list, get: get, create: create, update: update, changeStatus: changeStatus, remove: remove,
     isOverdue: isOverdue, _transition: transition, _deleteNow: deleteNow, _setDependencies: setDependencies
   };

@@ -156,9 +156,16 @@
         ['再実行回数', esc(t.retry_count || '0')]
       ].map(function (x) { return '<tr><th style="width:100px">' + x[0] + '</th><td>' + x[1] + '</td></tr>'; }).join('');
 
-      var statusButtons = App.canEdit() && t.next_statuses.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap">' + t.next_statuses.map(function (s) {
+      var retryCount = Number(t.retry_count) || 0;
+      var retryBox = App.canEdit() && t.status === 'FAILED'
+        ? '<div style="margin-bottom:10px;padding:10px 12px;border-radius:8px;background:var(--critical-soft)">' +
+          '<div style="font-size:13px;margin-bottom:6px">このタスクは失敗しています（再実行 ' + retryCount + '/' + t.max_retry_count + '回）</div>' +
+          (retryCount < t.max_retry_count ? '<button class="btn primary" id="btn-retry">再実行</button>'
+            : (App.isOwner() ? '<button class="btn danger" id="btn-retry-force">上限を超えて再実行</button>' : '<span class="muted" style="font-size:12px">上限に達しました。オーナーに確認してください</span>')) + '</div>'
+        : '';
+      var statusButtons = retryBox + (App.canEdit() && t.next_statuses.length ? '<div style="display:flex;gap:6px;flex-wrap:wrap">' + t.next_statuses.map(function (s) {
         return '<button class="btn' + (s === 'CANCELLED' ? ' danger' : '') + '" data-status="' + s + '">' + esc(App.statusLabel(s)) + '</button>';
-      }).join('') + '</div>' : '<div class="empty-state">変更できる状態はありません</div>';
+      }).join('') + '</div>' : '<div class="empty-state">変更できる状態はありません</div>');
 
       var depList = function (items, empty) {
         return items.length ? '<ul class="list">' + items.map(function (d) {
@@ -199,6 +206,14 @@
 
       el.querySelectorAll('[data-status]').forEach(function (b) { b.addEventListener('click', function () { changeStatus(t, b.getAttribute('data-status')); }); });
       var be = document.getElementById('btn-edit'); if (be) be.addEventListener('click', function () { openTaskForm(t); });
+      var retry = function (force) {
+        App.confirmDialog(force ? '上限を超えて再実行' : '再実行', '「' + t.task_name + '」を実行可能に戻し、次回の自動振り分けで担当AIへ再度割り当てます。',
+          { reason: true, reasonLabel: '再実行の理由・変更点（任意）', submitLabel: '再実行', danger: !!force,
+            action: function (d) { return App.call('tasks.retry', { task_id: t.task_id, reason: d.reason, force: !!force }); } })
+          .then(function () { App.toast('再実行に回しました'); App.render(); });
+      };
+      var brt = document.getElementById('btn-retry'); if (brt) brt.addEventListener('click', function () { retry(false); });
+      var brf = document.getElementById('btn-retry-force'); if (brf) brf.addEventListener('click', function () { retry(true); });
       var bd = document.getElementById('btn-deliverable'); if (bd) bd.addEventListener('click', function () { openDeliverableForm(t); });
       var br = document.getElementById('btn-remove'); if (br) br.addEventListener('click', function () { removeTask(t); });
     });

@@ -262,7 +262,23 @@
         '</table></div>' +
         '<div class="card"><h2>データ量 <span class="sub">スプレッドシートのセル上限（1,000万）に対して ' + h.cell_usage_percent + '%</span></h2>' + App.progressBar(Math.min(100, Math.max(1, h.cell_usage_percent))) +
         '<table class="data" style="margin-top:10px"><thead><tr><th>シート</th><th style="text-align:right">行数</th></tr></thead><tbody>' +
-        h.sheets.map(function (s) { return '<tr><td>' + esc(s.name) + '</td><td class="num" style="text-align:right">' + s.rows + '</td></tr>'; }).join('') + '</tbody></table></div></div>';
+        h.sheets.map(function (s) { return '<tr><td>' + esc(s.name) + '</td><td class="num" style="text-align:right">' + s.rows + '</td></tr>'; }).join('') + '</tbody></table></div></div>' +
+        '<div class="card section"><h2>導入確認（自己診断）<span class="sub">データを書き換えずに設置状態を点検します</span>' +
+        '<button class="btn" style="margin-left:auto" id="btn-selfcheck">点検する</button></h2><div id="selfcheck-result"></div></div>';
+      document.getElementById('btn-selfcheck').addEventListener('click', function (e) {
+        var b = e.currentTarget; b.disabled = true;
+        App.call('system.selfCheck').then(function (r) {
+          b.disabled = false;
+          var cls = { OK: 'good', WARN: 'warn', NG: 'critical' };
+          var lbl = { OK: '問題なし', WARN: '注意', NG: '要対応' };
+          document.getElementById('selfcheck-result').innerHTML =
+            '<div style="margin-bottom:8px">総合判定：<span class="chip ' + cls[r.overall] + '">' + lbl[r.overall] + '</span></div><ul class="list">' +
+            r.items.map(function (i) {
+              return '<li><span class="chip ' + cls[i.status] + '" style="min-width:64px;justify-content:center">' + lbl[i.status] + '</span>' +
+                '<div class="grow"><div class="title">' + esc(i.name) + '</div><div class="meta">' + esc(i.detail) + '</div></div></li>';
+            }).join('') + '</ul>';
+        }).catch(function (err) { b.disabled = false; App.showError(err); });
+      });
     });
   }
 

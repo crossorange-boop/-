@@ -40,6 +40,7 @@ var Api = (function () {
     'logs.executions': { role: 'VIEWER', fn: function (x) { return SystemService.executions(p(x, 'filter')); } },
     'logs.audits': { role: 'VIEWER', fn: function (x) { return SystemService.audits(p(x, 'filter')); } },
     'system.health': { role: 'OWNER', fn: function () { return SystemService.health(); } },
+    'system.selfCheck': { role: 'OWNER', fn: function () { return SelfCheck.run(); } },
 
     'queue.byAgent': { role: 'VIEWER', fn: function () { return WorkQueueService.byAgent(); } },
     'queue.runNow': { role: 'EDITOR', fn: function () { return WorkQueueService.runNow(); } },

@@ -26,7 +26,9 @@
   }
 
   function taskCard(t) {
-    var actions = '<button class="btn" data-copy="' + esc(t.task_id) + '">指示書をコピー</button>' +
+    var actions = (App.canEdit() ? '<button class="btn' + (t.has_instruction ? '' : ' primary') + '" data-write="' + esc(t.task_id) + '">' +
+        (t.has_instruction ? '指示書を編集' : '指示書を書く') + '</button>' : '') +
+      '<button class="btn" data-copy="' + esc(t.task_id) + '">指示書をコピー</button>' +
       '<button class="btn" data-show="' + esc(t.task_id) + '">表示</button>';
     if (App.canEdit() && t.status === 'ASSIGNED') actions += '<button class="btn primary" data-start="' + esc(t.task_id) + '">着手</button>';
     if (App.canEdit() && t.status === 'IN_PROGRESS') actions += '<a class="btn primary" href="#/tasks?id=' + encodeURIComponent(t.task_id) + '">成果物を登録</a>';
@@ -37,7 +39,7 @@
       '<div style="display:flex;gap:4px;flex-wrap:wrap;margin:3px 0">' + App.statusChip(t.status) + App.priorityChip(t.priority) +
         (t.is_overdue ? '<span class="chip critical">' + App.icon('alert') + ' 期限超過</span>' : '') + '</div>' +
       '<div class="meta">' + esc(t.project_name) + (t.deadline ? ' ・ 期限 ' + App.fmtDate(t.deadline, true) : '') +
-      (t.reference_urls.length ? ' ・ 資料 ' + t.reference_urls.length + '件' : '') + (t.has_instruction ? '' : ' ・ <span style="color:var(--warn)">指示書未入力</span>') + '</div>' +
+      (t.reference_urls.length ? ' ・ 資料 ' + t.reference_urls.length + '件' : '') + (t.has_instruction ? '' : ' ・ <a href="javascript:void(0)" data-write="' + esc(t.task_id) + '" style="color:var(--warn)">指示書未入力（ここから入力）</a>') + '</div>' +
       (reason ? '<div class="meta">理由' + (auto ? '（自動判定）' : '') + '：' + esc(reason) + '</div>' : '') + '</div>' +
       '<div class="item-actions" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">' + actions + '</div></li>';
   }
@@ -77,6 +79,9 @@
             var t = all[b.getAttribute('data-copy')];
             copyText(t.instruction_text).catch(function () { showInstruction(t); });
           });
+        });
+        el.querySelectorAll('[data-write]').forEach(function (b) {
+          b.addEventListener('click', function (e) { e.preventDefault(); App.openInstructionEditor(all[b.getAttribute('data-write')], function () { App.render(); }); });
         });
         el.querySelectorAll('[data-show]').forEach(function (b) { b.addEventListener('click', function () { showInstruction(all[b.getAttribute('data-show')]); }); });
         el.querySelectorAll('[data-start]').forEach(function (b) {

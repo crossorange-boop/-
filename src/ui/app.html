@@ -261,6 +261,104 @@ var App = (function () {
     return { close: close, form: form };
   }
 
+  /**
+   * 指示書の入力画面（作業待ちキュー・タスク詳細の両方から開く）。
+   * task: { task_id, task_name, project_name, agent_name, description, deadline, priority, instruction, reference_urls, row_version, predecessors }
+   * 保存したら onSaved() を呼ぶ。
+   */
+  function instructionTemplate(t) {
+    var lines = [];
+    lines.push('■ 目的（なぜやるか・何に使うか）');
+    lines.push(t.description ? String(t.description) : '');
+    lines.push('');
+    lines.push('■ やること');
+    lines.push('1. ');
+    lines.push('2. ');
+    lines.push('');
+    lines.push('■ 成果物の形（何を・どの形式で・どこに保存するか）');
+    lines.push('- ');
+    lines.push('');
+    lines.push('■ 注意点・前提');
+    if (t.deadline) lines.push('- 期限：' + fmtDate(t.deadline));
+    lines.push('- ');
+    return lines.join('\n');
+  }
+
+  function draftPrompt(t, memo, refsText) {
+    var lines = [];
+    lines.push('次のタスクについて、担当AI' + (t.agent_name ? '（' + t.agent_name + '）' : '') + 'にそのまま渡せる「作業指示書」の下書きを日本語で書いてください。');
+    lines.push('形式は「■ 目的」「■ やること（番号付きの手順）」「■ 成果物の形（形式・保存先）」「■ 注意点・前提」の4つの見出しにしてください。');
+    lines.push('情報が足りない所は推測で埋めず、「【要確認】〜」として書き出してください。出力は指示書の本文だけにしてください。');
+    lines.push('');
+    lines.push('タスク名：' + t.task_name);
+    if (t.project_name) lines.push('プロジェクト：' + t.project_name);
+    if (t.deadline) lines.push('期限：' + fmtDate(t.deadline));
+    if (t.priority) lines.push('優先度：' + t.priority);
+    if (t.description) lines.push('説明：' + t.description);
+    if (t.predecessors && t.predecessors.length) lines.push('前提タスク：' + t.predecessors.join('、'));
+    if (refsText) lines.push('参考資料：' + refsText);
+    if (String(memo || '').trim()) { lines.push(''); lines.push('今のメモ（これを元に整えてください）：'); lines.push(String(memo).trim()); }
+    return lines.join('\n');
+  }
+
+  function copyToClipboard(text, fallbackEl) {
+    var manual = function () {
+      if (fallbackEl) { fallbackEl.value = text; fallbackEl.style.display = 'block'; fallbackEl.focus(); fallbackEl.select(); }
+      try { if (document.execCommand && document.execCommand('copy')) return true; } catch (e) { /* noop */ }
+      return false;
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }).catch(function () { return manual(); });
+    }
+    return Promise.resolve(manual());
+  }
+
+  function openInstructionEditor(t, onSaved) {
+    var refsText = Array.isArray(t.reference_urls) ? t.reference_urls.join(',') : String(t.reference_urls || '');
+    var current = String(t.instruction || '');
+    var info = [t.project_name, t.agent_name ? '担当：' + t.agent_name : '', t.deadline ? '期限 ' + fmtDate(t.deadline) : '']
+      .filter(Boolean).map(esc).join(' ・ ');
+    var m = modal({
+      title: '指示書：' + t.task_name,
+      submitLabel: '保存',
+      body: (info ? '<div class="muted" style="font-size:12px;margin-bottom:6px">' + info + '</div>' : '') +
+        (t.description ? '<div style="font-size:13px;white-space:pre-wrap;background:var(--surface-2);padding:8px 10px;border-radius:8px;margin-bottom:8px;max-height:96px;overflow:auto">' + esc(t.description) + '</div>' : '') +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">' +
+          '<button type="button" class="btn" data-template>ひな形を入れる</button>' +
+          '<button type="button" class="btn" data-draft>AIに下書きを頼む文章をコピー</button>' +
+        '</div>' +
+        '<div class="hint" style="margin-bottom:6px">下書きを頼む文章を Claude などに貼り付け → 返ってきた指示書をこの欄に貼り付けて保存できます。</div>' +
+        '<textarea data-draft-text rows="6" readonly style="display:none;font-size:12px;margin-bottom:6px"></textarea>' +
+        '<div class="field"><label for="ie_instruction">AIへの指示書</label>' +
+          '<textarea id="ie_instruction" name="instruction" rows="16" style="font-size:14px;min-height:40vh" placeholder="「ひな形を入れる」で見出しを入れてから書くと楽です">' + esc(current) + '</textarea></div>' +
+        field({ name: 'reference_urls', label: '資料URL（カンマ区切り・https のみ）', value: refsText, placeholder: 'https://drive.google.com/...', idPrefix: 'ie_' }),
+      onOpen: function (form) {
+        var ta = form.querySelector('#ie_instruction');
+        if (!current) { ta.value = instructionTemplate(t); }
+        ta.focus();
+        form.querySelector('[data-template]').addEventListener('click', function () {
+          var tpl = instructionTemplate(t);
+          ta.value = String(ta.value).trim() ? String(ta.value).replace(/\s+$/, '') + '\n\n' + tpl : tpl;
+          ta.focus();
+        });
+        form.querySelector('[data-draft]').addEventListener('click', function () {
+          var text = draftPrompt(t, ta.value === instructionTemplate(t) ? '' : ta.value, form.querySelector('[name=reference_urls]').value);
+          Promise.resolve(copyToClipboard(text, form.querySelector('[data-draft-text]'))).then(function (ok) {
+            toast(ok ? '下書きを頼む文章をコピーしました。AIに貼り付けてください' : '自動コピーできませんでした。表示された文章を選択してコピーしてください');
+          });
+        });
+      },
+      onSubmit: function (data) {
+        var text = String(data.instruction || '');
+        if (text.trim() === instructionTemplate(t).trim()) text = ''; // ひな形のままなら未入力扱い
+        return call('tasks.update', { task_id: t.task_id, row_version: t.row_version,
+          data: { instruction: text, reference_urls: String(data.reference_urls || '').trim() } })
+          .then(function () { toast(text ? '指示書を保存しました' : '指示書は空のままです'); if (onSaved) onSaved(); });
+      }
+    });
+    return m;
+  }
+
   /** 確認ダイアログ（理由入力つきも可）。opts.action(data) → Promise で処理まで行う */
   function confirmDialog(title, message, opts) {
     opts = opts || {};
@@ -318,7 +416,7 @@ var App = (function () {
     statusChip: statusChip, priorityChip: priorityChip, toast: toast, showError: showError,
     setTitle: setTitle, setActions: setActions, registerView: registerView, updateCounts: updateCounts,
     render: render, start: start, PRIORITY_LABEL: PRIORITY_LABEL,
-    field: field, formData: formData, modal: modal, confirmDialog: confirmDialog, canEdit: canEdit, isOwner: isOwner,
+    field: field, formData: formData, modal: modal, openInstructionEditor: openInstructionEditor, confirmDialog: confirmDialog, canEdit: canEdit, isOwner: isOwner,
     loadRefs: loadRefs, go: go, progressBar: progressBar
   };
 })();

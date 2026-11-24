@@ -36,8 +36,8 @@
       '</div>' +
       App.field({ name: 'dependency_task_ids', label: '依存タスク（先に完了が必要なタスク）', type: 'select', multiple: true,
         value: t.dependency_task_ids, options: depOptions, hint: 'Ctrl/⌘ キーで複数選択。スマホは一覧から複数選べます' }) +
-      App.field({ name: 'instruction', label: 'AIへの指示書', type: 'textarea', value: t.instruction, rows: 5,
-        hint: '作業待ちキューからコピーして各AIに渡す内容' }) +
+      App.field({ name: 'instruction', label: 'AIへの指示書', type: 'textarea', value: t.instruction, rows: 8,
+        hint: '大きな画面で書くには、タスク詳細または作業待ちキューの「指示書を書く」を使ってください（ひな形・AI下書きあり）' }) +
       App.field({ name: 'reference_urls', label: '資料URL（カンマ区切り・https のみ）', value: t.reference_urls, placeholder: 'https://drive.google.com/...' }) +
       '<div class="row2">' +
         App.field({ name: 'category', label: 'カテゴリ', value: t.category, placeholder: '空欄なら自動分類' }) +
@@ -195,7 +195,8 @@
             '<div class="card section"><h2>依存関係</h2><div class="muted" style="font-size:12px">先に完了が必要</div>' + depList(t.predecessors, 'なし') +
             '<div class="muted" style="font-size:12px;margin-top:8px">このタスクを待っている後続</div>' + depList(t.successors, 'なし') + '</div></div>' +
         '</div>' +
-        '<div class="card section"><h2>AIへの指示書と資料</h2>' +
+        '<div class="card section"><h2>AIへの指示書と資料' +
+          (App.canEdit() && t.status !== 'COMPLETED' && t.status !== 'CANCELLED' ? '<button class="btn' + (t.instruction ? '' : ' primary') + '" id="btn-instruction" style="margin-left:auto">' + (t.instruction ? '指示書を編集' : '指示書を書く') + '</button>' : '') + '</h2>' +
           (t.instruction ? '<div style="white-space:pre-wrap;background:var(--surface-2);padding:10px 12px;border-radius:8px">' + esc(t.instruction) + '</div>' : '<div class="empty-state">指示書は未入力です</div>') +
           '<div style="margin-top:10px">' + refsHtml + '</div></div>' +
         '<div class="card section"><h2>成果物 <span class="sub">' + t.deliverables.length + '件</span>' +
@@ -214,6 +215,12 @@
       };
       var brt = document.getElementById('btn-retry'); if (brt) brt.addEventListener('click', function () { retry(false); });
       var brf = document.getElementById('btn-retry-force'); if (brf) brf.addEventListener('click', function () { retry(true); });
+      var bi = document.getElementById('btn-instruction');
+      if (bi) bi.addEventListener('click', function () {
+        App.openInstructionEditor({ task_id: t.task_id, task_name: t.task_name, project_name: refs.projectName(t.project_id), agent_name: refs.agentName(t.assigned_agent_id),
+          description: t.description, deadline: t.deadline, priority: t.priority, instruction: t.instruction, reference_urls: t.reference_urls,
+          row_version: t.row_version, predecessors: t.predecessors.map(function (d) { return d.task_name; }) }, function () { App.render(); });
+      });
       var bd = document.getElementById('btn-deliverable'); if (bd) bd.addEventListener('click', function () { openDeliverableForm(t); });
       var br = document.getElementById('btn-remove'); if (br) br.addEventListener('click', function () { removeTask(t); });
     });

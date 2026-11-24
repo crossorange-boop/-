@@ -1,6 +1,6 @@
 /**
- * AI統合管制システム v0.1.1（まとめファイル・自動生成：直接編集しないでください）
- * 元のソース：src/*.gs（32ファイル） 生成元コミット：782fc41
+ * AI統合管制システム v0.1.2（まとめファイル・自動生成：直接編集しないでください）
+ * 元のソース：src/*.gs（32ファイル） 生成元コミット：e2d707a
  * 導入方法：docs/06_ブラウザだけで導入.md
  */
 // ===== 00_Config.gs =====
@@ -12,7 +12,7 @@
 
 var Config = (function () {
   /** システムのバージョン */
-  var VERSION = '0.1.1';
+  var VERSION = '0.1.2';
 
   /** スクリプトプロパティのキー（値はコード・シートに書かない） */
   var PROP_KEYS = {
@@ -53,6 +53,27 @@ var Config = (function () {
 
   /** 終了状態（自動処理の対象外） */
   var TERMINAL_STATUSES = ['COMPLETED', 'CANCELLED'];
+
+  /**
+   * 状態名のゆれ（シートを直接編集した・他ツールで書き込んだ場合など）→ 正式な状態名。
+   * 例：DONE／完了 → COMPLETED。読み込み時とセットアップ時にこの表で揃える。
+   */
+  var TASK_STATUS_ALIASES = {
+    DONE: 'COMPLETED', COMPLETE: 'COMPLETED', FINISHED: 'COMPLETED', '完了': 'COMPLETED', '済': 'COMPLETED', '完了済み': 'COMPLETED',
+    CANCELED: 'CANCELLED', CANCEL: 'CANCELLED', '中止': 'CANCELLED', 'キャンセル': 'CANCELLED'
+  };
+
+  /** 状態名を正式名に揃える（正式名・不明な値はそのまま返す） */
+  function normalizeTaskStatus(value) {
+    var v = String(value === null || value === undefined ? '' : value).trim();
+    if (!v) return v;
+    if (TASK_STATUS_LABEL.hasOwnProperty(v)) return v;
+    var upper = v.toUpperCase().replace(/[\s-]+/g, '_');
+    if (TASK_STATUS_LABEL.hasOwnProperty(upper)) return upper;
+    if (TASK_STATUS_ALIASES.hasOwnProperty(upper)) return TASK_STATUS_ALIASES[upper];
+    if (TASK_STATUS_ALIASES.hasOwnProperty(v)) return TASK_STATUS_ALIASES[v];
+    return v;
+  }
 
   var PROJECT_STATUS = ['PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
   var PRIORITY = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
@@ -190,6 +211,8 @@ var Config = (function () {
     TASK_STATUS: TASK_STATUS,
     TASK_STATUS_LABEL: TASK_STATUS_LABEL,
     TERMINAL_STATUSES: TERMINAL_STATUSES,
+    TASK_STATUS_ALIASES: TASK_STATUS_ALIASES,
+    normalizeTaskStatus: normalizeTaskStatus,
     PROJECT_STATUS: PROJECT_STATUS,
     PRIORITY: PRIORITY,
     PRIORITY_ORDER: PRIORITY_ORDER,
@@ -473,7 +496,12 @@ var SheetsRepository = (function () {
     var headers = values[0].map(function (h) { return String(h).trim(); });
     var index = {};
     headers.forEach(function (h, i) { if (h) index[h] = i; });
-    cache[table] = { sheet: sheet, headers: headers, index: index, rows: values.slice(1).map(function (r) { return r.map(fromCell); }) };
+    var rows = values.slice(1).map(function (r) { return r.map(fromCell); });
+    // タスクの状態名のゆれ（DONE・完了など）は読み込み時に正式名へ揃える
+    if (table === 'Tasks' && index.status !== undefined) {
+      rows.forEach(function (r) { r[index.status] = Config.normalizeTaskStatus(r[index.status]); });
+    }
+    cache[table] = { sheet: sheet, headers: headers, index: index, rows: rows };
     return cache[table];
   }
 
@@ -2536,6 +2564,7 @@ var WorkQueueService = (function () {
           status_label: Config.TASK_STATUS_LABEL[t.status], priority: t.priority, deadline: t.deadline,
           is_overdue: TaskService.isOverdue(t, now), waiting_reason: t.waiting_reason, row_version: t.row_version,
           has_instruction: !!t.instruction, reference_urls: Util.splitList(t.reference_urls),
+          description: t.description, instruction: t.instruction, predecessors: preds, agent_name: a.agent_name,
           instruction_text: buildInstructionText(t, projectNames[t.project_id], preds)
         };
       });
@@ -2715,14 +2744,17 @@ var ReportService = (function () {
     var errorsToday = Repository.get().findAll('ExecutionLogs').filter(function (e) {
       return e.result === 'FAILED' && String(e.start_time).slice(0, 10) === c.today;
     });
+    var dueTodayOpen = AssignmentEngine.sortQueue(c.open.filter(function (t) { return String(t.deadline).slice(0, 10) === c.today; }));
     var withDeadline = function (t) { return c.label(t) + (t.deadline ? ' 期限 ' + dateLabel(t.deadline) : ''); };
     return {
       kind: 'evening', title: TITLES.evening, date_label: c.today,
-      headline: '本日完了 ' + c.completedToday.length + '件・新規 ' + createdToday.length + '件・期限超過 ' + c.overdue.length + '件・明日期限 ' + c.dueTomorrow.length + '件',
+      headline: '本日完了 ' + c.completedToday.length + '件・新規 ' + createdToday.length + '件・今日期限で未完了 ' + dueTodayOpen.length + '件・期限超過 ' + c.overdue.length + '件・明日期限 ' + c.dueTomorrow.length + '件',
       sections: [
         section('本日完了したタスク', c.completedToday, function (x) { return c.label(x.task) + ' ' + hm(x.time); }, 'なし'),
         { heading: 'プロジェクト別進捗（' + active.length + '件）', items: projectLines.length ? projectLines : ['なし'] },
-        section('今日が期限だったのに未完了', c.overdue.filter(function (t) { return String(t.deadline).slice(0, 10) === c.today; }), withDeadline),
+        // 日付だけの期限はその日の 23:59 までが期限のため、夕方の時点ではまだ「期限超過」に入らない。
+        // 今日が期限で未完了のものは、期限超過かどうかに関係なく数える。
+        section('今日が期限なのに未完了', dueTodayOpen, withDeadline),
         section('期限超過（全体）', c.overdue, withDeadline),
         section('明日が期限', c.dueTomorrow, withDeadline),
         section('止まっているタスク', c.waiting.concat(c.blocked, c.failed), function (t) {
@@ -3530,10 +3562,31 @@ var Setup = (function () {
     });
   }
 
+  /** タスクの状態名のゆれ（DONE・完了など）をシート上でも正式名に書き換える。件数を返す */
+  function normalizeTaskStatuses(ss, report) {
+    var sheet = ss.getSheetByName('Tasks');
+    if (!sheet || sheet.getLastRow() < 2) return;
+    var lastCol = sheet.getLastColumn();
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
+    var col = headers.indexOf('status');
+    if (col < 0) return;
+    var range = sheet.getRange(2, col + 1, sheet.getLastRow() - 1, 1);
+    var values = range.getValues();
+    var changed = 0;
+    var out = values.map(function (r) {
+      var before = r[0] === null || r[0] === undefined ? '' : String(r[0]);
+      var after = Config.normalizeTaskStatus(before);
+      if (after !== before) { changed++; report.statusesNormalized[before] = (report.statusesNormalized[before] || 0) + 1; }
+      return [after];
+    });
+    if (changed) range.setValues(out);
+  }
+
   function run() {
     var report = {
       spreadsheetCreated: false, spreadsheetUrl: '', sheetsCreated: [], columnsAdded: {}, extraColumnsKept: {},
-      settingsAdded: [], agentsAdded: [], rulesAdded: [], backupFolderCreated: false, ownerEmail: ''
+      settingsAdded: [], agentsAdded: [], rulesAdded: [], backupFolderCreated: false, ownerEmail: '',
+      statusesNormalized: {}
     };
     var props = PropertiesService.getScriptProperties();
 
@@ -3546,6 +3599,7 @@ var Setup = (function () {
         ensureSheet(ss, name, Config.SHEETS[name], report);
       });
       if (opened.created) removeDefaultSheet(ss);
+      normalizeTaskStatuses(ss, report);
 
       if (!props.getProperty(Config.PROP_KEYS.OWNER_EMAIL)) {
         props.setProperty(Config.PROP_KEYS.OWNER_EMAIL, Session.getEffectiveUser().getEmail());
@@ -3561,7 +3615,8 @@ var Setup = (function () {
         timestamp: Util.nowIso(), user: report.ownerEmail, action: 'SETUP', entity_type: 'System', entity_id: Config.VERSION,
         before_json: '', after_json: JSON.stringify({
           sheetsCreated: report.sheetsCreated, columnsAdded: report.columnsAdded,
-          settingsAdded: report.settingsAdded, agentsAdded: report.agentsAdded, rulesAdded: report.rulesAdded
+          settingsAdded: report.settingsAdded, agentsAdded: report.agentsAdded, rulesAdded: report.rulesAdded,
+          statusesNormalized: report.statusesNormalized
         })
       });
       return report;

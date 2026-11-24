@@ -58,7 +58,12 @@ var SheetsRepository = (function () {
     var headers = values[0].map(function (h) { return String(h).trim(); });
     var index = {};
     headers.forEach(function (h, i) { if (h) index[h] = i; });
-    cache[table] = { sheet: sheet, headers: headers, index: index, rows: values.slice(1).map(function (r) { return r.map(fromCell); }) };
+    var rows = values.slice(1).map(function (r) { return r.map(fromCell); });
+    // タスクの状態名のゆれ（DONE・完了など）は読み込み時に正式名へ揃える
+    if (table === 'Tasks' && index.status !== undefined) {
+      rows.forEach(function (r) { r[index.status] = Config.normalizeTaskStatus(r[index.status]); });
+    }
+    cache[table] = { sheet: sheet, headers: headers, index: index, rows: rows };
     return cache[table];
   }
 

@@ -6,7 +6,7 @@
 
 var Config = (function () {
   /** システムのバージョン */
-  var VERSION = '0.1.1';
+  var VERSION = '0.1.2';
 
   /** スクリプトプロパティのキー（値はコード・シートに書かない） */
   var PROP_KEYS = {
@@ -47,6 +47,27 @@ var Config = (function () {
 
   /** 終了状態（自動処理の対象外） */
   var TERMINAL_STATUSES = ['COMPLETED', 'CANCELLED'];
+
+  /**
+   * 状態名のゆれ（シートを直接編集した・他ツールで書き込んだ場合など）→ 正式な状態名。
+   * 例：DONE／完了 → COMPLETED。読み込み時とセットアップ時にこの表で揃える。
+   */
+  var TASK_STATUS_ALIASES = {
+    DONE: 'COMPLETED', COMPLETE: 'COMPLETED', FINISHED: 'COMPLETED', '完了': 'COMPLETED', '済': 'COMPLETED', '完了済み': 'COMPLETED',
+    CANCELED: 'CANCELLED', CANCEL: 'CANCELLED', '中止': 'CANCELLED', 'キャンセル': 'CANCELLED'
+  };
+
+  /** 状態名を正式名に揃える（正式名・不明な値はそのまま返す） */
+  function normalizeTaskStatus(value) {
+    var v = String(value === null || value === undefined ? '' : value).trim();
+    if (!v) return v;
+    if (TASK_STATUS_LABEL.hasOwnProperty(v)) return v;
+    var upper = v.toUpperCase().replace(/[\s-]+/g, '_');
+    if (TASK_STATUS_LABEL.hasOwnProperty(upper)) return upper;
+    if (TASK_STATUS_ALIASES.hasOwnProperty(upper)) return TASK_STATUS_ALIASES[upper];
+    if (TASK_STATUS_ALIASES.hasOwnProperty(v)) return TASK_STATUS_ALIASES[v];
+    return v;
+  }
 
   var PROJECT_STATUS = ['PLANNING', 'ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED'];
   var PRIORITY = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
@@ -184,6 +205,8 @@ var Config = (function () {
     TASK_STATUS: TASK_STATUS,
     TASK_STATUS_LABEL: TASK_STATUS_LABEL,
     TERMINAL_STATUSES: TERMINAL_STATUSES,
+    TASK_STATUS_ALIASES: TASK_STATUS_ALIASES,
+    normalizeTaskStatus: normalizeTaskStatus,
     PROJECT_STATUS: PROJECT_STATUS,
     PRIORITY: PRIORITY,
     PRIORITY_ORDER: PRIORITY_ORDER,

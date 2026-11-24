@@ -144,14 +144,17 @@ var ReportService = (function () {
     var errorsToday = Repository.get().findAll('ExecutionLogs').filter(function (e) {
       return e.result === 'FAILED' && String(e.start_time).slice(0, 10) === c.today;
     });
+    var dueTodayOpen = AssignmentEngine.sortQueue(c.open.filter(function (t) { return String(t.deadline).slice(0, 10) === c.today; }));
     var withDeadline = function (t) { return c.label(t) + (t.deadline ? ' 期限 ' + dateLabel(t.deadline) : ''); };
     return {
       kind: 'evening', title: TITLES.evening, date_label: c.today,
-      headline: '本日完了 ' + c.completedToday.length + '件・新規 ' + createdToday.length + '件・期限超過 ' + c.overdue.length + '件・明日期限 ' + c.dueTomorrow.length + '件',
+      headline: '本日完了 ' + c.completedToday.length + '件・新規 ' + createdToday.length + '件・今日期限で未完了 ' + dueTodayOpen.length + '件・期限超過 ' + c.overdue.length + '件・明日期限 ' + c.dueTomorrow.length + '件',
       sections: [
         section('本日完了したタスク', c.completedToday, function (x) { return c.label(x.task) + ' ' + hm(x.time); }, 'なし'),
         { heading: 'プロジェクト別進捗（' + active.length + '件）', items: projectLines.length ? projectLines : ['なし'] },
-        section('今日が期限だったのに未完了', c.overdue.filter(function (t) { return String(t.deadline).slice(0, 10) === c.today; }), withDeadline),
+        // 日付だけの期限はその日の 23:59 までが期限のため、夕方の時点ではまだ「期限超過」に入らない。
+        // 今日が期限で未完了のものは、期限超過かどうかに関係なく数える。
+        section('今日が期限なのに未完了', dueTodayOpen, withDeadline),
         section('期限超過（全体）', c.overdue, withDeadline),
         section('明日が期限', c.dueTomorrow, withDeadline),
         section('止まっているタスク', c.waiting.concat(c.blocked, c.failed), function (t) {

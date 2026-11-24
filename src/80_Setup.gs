@@ -123,10 +123,31 @@ var Setup = (function () {
     });
   }
 
+  /** タスクの状態名のゆれ（DONE・完了など）をシート上でも正式名に書き換える。件数を返す */
+  function normalizeTaskStatuses(ss, report) {
+    var sheet = ss.getSheetByName('Tasks');
+    if (!sheet || sheet.getLastRow() < 2) return;
+    var lastCol = sheet.getLastColumn();
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
+    var col = headers.indexOf('status');
+    if (col < 0) return;
+    var range = sheet.getRange(2, col + 1, sheet.getLastRow() - 1, 1);
+    var values = range.getValues();
+    var changed = 0;
+    var out = values.map(function (r) {
+      var before = r[0] === null || r[0] === undefined ? '' : String(r[0]);
+      var after = Config.normalizeTaskStatus(before);
+      if (after !== before) { changed++; report.statusesNormalized[before] = (report.statusesNormalized[before] || 0) + 1; }
+      return [after];
+    });
+    if (changed) range.setValues(out);
+  }
+
   function run() {
     var report = {
       spreadsheetCreated: false, spreadsheetUrl: '', sheetsCreated: [], columnsAdded: {}, extraColumnsKept: {},
-      settingsAdded: [], agentsAdded: [], rulesAdded: [], backupFolderCreated: false, ownerEmail: ''
+      settingsAdded: [], agentsAdded: [], rulesAdded: [], backupFolderCreated: false, ownerEmail: '',
+      statusesNormalized: {}
     };
     var props = PropertiesService.getScriptProperties();
 
@@ -139,6 +160,7 @@ var Setup = (function () {
         ensureSheet(ss, name, Config.SHEETS[name], report);
       });
       if (opened.created) removeDefaultSheet(ss);
+      normalizeTaskStatuses(ss, report);
 
       if (!props.getProperty(Config.PROP_KEYS.OWNER_EMAIL)) {
         props.setProperty(Config.PROP_KEYS.OWNER_EMAIL, Session.getEffectiveUser().getEmail());
@@ -154,7 +176,8 @@ var Setup = (function () {
         timestamp: Util.nowIso(), user: report.ownerEmail, action: 'SETUP', entity_type: 'System', entity_id: Config.VERSION,
         before_json: '', after_json: JSON.stringify({
           sheetsCreated: report.sheetsCreated, columnsAdded: report.columnsAdded,
-          settingsAdded: report.settingsAdded, agentsAdded: report.agentsAdded, rulesAdded: report.rulesAdded
+          settingsAdded: report.settingsAdded, agentsAdded: report.agentsAdded, rulesAdded: report.rulesAdded,
+          statusesNormalized: report.statusesNormalized
         })
       });
       return report;

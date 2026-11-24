@@ -50,6 +50,7 @@ var WorkQueueService = (function () {
           status_label: Config.TASK_STATUS_LABEL[t.status], priority: t.priority, deadline: t.deadline,
           is_overdue: TaskService.isOverdue(t, now), waiting_reason: t.waiting_reason, row_version: t.row_version,
           has_instruction: !!t.instruction, reference_urls: Util.splitList(t.reference_urls),
+          description: t.description, instruction: t.instruction, predecessors: preds, agent_name: a.agent_name,
           instruction_text: buildInstructionText(t, projectNames[t.project_id], preds)
         };
       });

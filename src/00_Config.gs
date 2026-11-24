@@ -6,7 +6,7 @@
 
 var Config = (function () {
   /** システムのバージョン */
-  var VERSION = '0.1.0';
+  var VERSION = '0.1.1';
 
   /** スクリプトプロパティのキー（値はコード・シートに書かない） */
   var PROP_KEYS = {

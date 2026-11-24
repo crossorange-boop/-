@@ -240,6 +240,26 @@ async function main() {
       assert.ok(await page.isVisible('#lane-AGT-CANVA .chip:has-text("外部AIの利用待ち")'));
     });
 
+    await step('作業待ちキュー：指示書を書く（ひな形 → 保存 → 未入力表示が消える）', async () => {
+      await page.goto(BASE + '/#/queue');
+      await page.waitForSelector('[data-write]');
+      const before = await page.$$eval('a[data-write]', (a) => a.length);
+      await page.click('button[data-write]:has-text("指示書を書く")');
+      await page.waitForSelector('#ie_instruction');
+      const tpl = await page.$eval('#ie_instruction', (t) => t.value);
+      assert.ok(tpl.includes('■ 目的') && tpl.includes('■ やること') && tpl.includes('■ 成果物の形'), tpl);
+      await shot('instruction-editor-pc');
+      await page.fill('#ie_instruction', '■ 目的\nテスト用の指示\n■ やること\n1. 確認する');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.toast:has-text("指示書を保存しました")');
+      await page.waitForFunction((n) => document.querySelectorAll('a[data-write]').length === n - 1, before);
+      // ひな形のまま保存しても未入力扱い（空の見出しだけの指示書を作らない）
+      await page.click('button[data-write]:has-text("指示書を書く")');
+      await page.waitForSelector('#ie_instruction');
+      await page.click('.modal button[type=submit]');
+      await page.waitForSelector('.toast:has-text("指示書は空のままです")');
+    });
+
     await step('設定・ログ：定期処理を登録すると6件が登録済みになる', async () => {
       await page.goto(BASE + '/#/settings?tab=automation');
       await page.waitForSelector('text=定期処理が登録されていません');
